@@ -83,3 +83,11 @@ The two price cards and feed selector are removed. The app compares actual marke
 Displayed dates use `dateLabel` (Nov 17, 2026); date-only values keep their exact calendar day, and timestamp displays retain ET time. Charts and historical research keep their daily basis. The updated 72.32-second walkthrough with original music is `artifacts/Nidhiksh-Markets-Walkthrough-Music.mp4`; no login or secrets appear. The app does not autoplay music.
 
 Latest verification: 66 backend tests and 18 Chrome checks passed; production build/typecheck passed. The current preview serves the reviewed immutable build. The music video is 72.32s, H.264/AAC stereo, 3,665,410 bytes, with a full decode check and no clipping.
+
+## Chart-period price comparison
+
+Selecting a supported range (1M/3M/6M/1Y/3Y/5Y) shows its price change in percent and dollars per share below the range controls. The baseline is the first selected daily bar’s split-adjusted close; the endpoint is the same newest available quote used in the headline. Actual starting date and endpoint timestamp are visible. Invalid, zero-price, unsupported or out-of-order comparisons are unavailable; loading does not retain the previous range’s result. Dividends are excluded. No additional provider calls are added.
+
+Header appearance now toggles light/dark immediately without navigation. Auto remains the default and is selected through Settings; manual overrides and all three settings choices persist per user. A separate temporary Viewer regression covers these behaviors without modifying the owner’s settings.
+
+Combined refinement verification: production build/typecheck passed and all 20 Chrome regressions passed in 1.3 minutes. The local preview serves this final build.

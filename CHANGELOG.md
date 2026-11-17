@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0.2 — 2026-11-17
+
+- Show selected chart-period price change in percent and dollars per share, comparing its first split-adjusted daily close with the newest available quote.
+- Show the actual starting date, starting price and quote timestamp; unavailable comparisons do not invent a return.
+- Switch light/dark directly from the header; retain persistent Auto, Light and Dark choices in Settings.
+
 ## 0.1.0.1 — 2026-11-17
 
 - Automatically show one newest available quote per stock, with timing and market coverage behind a small information icon.
