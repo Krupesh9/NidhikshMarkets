@@ -1,0 +1,43 @@
+name: nidhiksh-markets-dev
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/runtime/market.sqlite
+      APP_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: 'false'
+    volumes:
+      - market_data:/app/runtime
+      - backup_data:/app/backups
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD','python','-m','app.cli','health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD','node','-e',"fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+volumes:
+  market_data:
+  backup_data:

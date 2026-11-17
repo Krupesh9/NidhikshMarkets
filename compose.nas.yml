@@ -1,0 +1,67 @@
+# Prepared only. NAS discovery, exact paths, HTTPS gateway, and approval required.
+name: nidhiksh-markets
+services:
+  backend:
+    image: nidhiksh-markets-api:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/runtime/market.sqlite
+      APP_ORIGIN: ${APP_ORIGIN:?Set the approved private HTTPS app origin}
+      COOKIE_SECURE: 'true'
+      COLLECTORS_ENABLED: 'true'
+    volumes:
+      - type: bind
+        source: ${NAS_DATA_DIR:?Set the verified NAS-local data directory}
+        target: /app/runtime
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${NAS_BACKUP_DIR:?Set the verified separate backup directory}
+        target: /app/backups
+        bind:
+          create_host_path: false
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ['/tmp:mode=1777,size=64m']
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    stop_grace_period: 45s
+    healthcheck:
+      test: ['CMD','python','-m','app.cli','health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options: {max-size: '10m', max-file: '3'}
+  frontend:
+    image: nidhiksh-markets-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - '${NAS_BIND_IP:-127.0.0.1}:3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ['/tmp:mode=1777,size=32m','/app/.next/cache:uid=1000,gid=1000,size=32m']
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    healthcheck:
+      test: ['CMD','node','-e',"fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: '10m', max-file: '3'}
