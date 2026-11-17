@@ -29,6 +29,7 @@ const VIEWS: {id: View; label: string; icon: typeof Activity}[] = [
 const RANGES = ['1m', '3m', '6m', '1y', '3y', '5y'] as const;
 const STRATEGIES = [['trend', 'Trend'], ['mean_reversion', 'Mean reversion'], ['breakout', 'Breakout']] as const;
 const NO_SIGNALS: Signal[] = [];
+const STRATEGY_NAME: Record<string, string> = {trend: 'Trend (momentum)', mean_reversion: 'Mean reversion', breakout: 'Breakout'};
 
 function readPref<T extends string>(key: string, fallback: T): T {
   try { return (localStorage.getItem(`nm-v2-${key}`) as T) || fallback; } catch { return fallback; }
@@ -526,9 +527,9 @@ function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: strin
       {tab === 'financials' && (fundamentals ? <Financials data={fundamentals} symbol={symbol} /> : <p className="v2-note">No reported financials cached.</p>)}
       {tab === 'signals' && <FeedList items={[...events].reverse().slice(0, 30)} empty="No historical research candidates for this symbol." render={(s: Signal) => <div className="v2-signal">
         <span className={`v2-pill ${s.kind === 'entry' ? 'up' : 'down'}`}>{s.kind === 'entry' ? '▲ Buy' : '▼ Sell'}</span>
-        <b>{s.label || s.strategy}</b><small>{dateLabel(s.time.slice(0, 10))} · {money(s.price)} · {s.strategy.replace('_', ' ')} v{s.version}</small>
+        <b>{STRATEGY_NAME[s.strategy] || s.strategy} · {s.kind === 'entry' ? 'entry' : 'exit'}: {(s.evidence?.conditions || []).join(' · ') || 'conditions not recorded'}</b><small>{dateLabel(s.time.slice(0, 10))} · close {money(s.price)} · v{s.version}{typeof s.evidence?.rsi === 'number' ? ` · RSI ${s.evidence.rsi.toFixed(1)}` : ''}</small>
       </div>} />}
-      {tab === 'signals' && signals?.note && <p className="v2-fine">{signals.note}</p>}
+      {tab === 'signals' && <p className="v2-fine">Trend buys after strength is confirmed (above the 200-day average, RSI crossing 50) and exits below the 20-day average — it buys rising prices, not dips. Mean reversion buys after an oversold close below the lower Bollinger band. Breakout buys a new 20-day high on heavy volume. {signals?.note}</p>}
     </section>
 
     {studio && config && <div className="v2-legacy"><IndicatorStudio config={config} symbol={symbol} mode={mode} onClose={() => setStudio(false)} onApply={applyIndicators} /></div>}
