@@ -2,7 +2,7 @@
 
 Private market research app: Next.js/React/TypeScript frontend, FastAPI/Python backend, SQLite with Alembic migrations. Local development is running at **http://localhost:3000**. Unique initial login: `runtime/first-login.txt` (local, ignored by Git).
 
-**Start with [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md) for the exact implementation status, remaining work, and latest user decisions.** Local unit/API and browser acceptance tests are implemented and run. A private captioned walkthrough is available in `artifacts/Nidhiksh-Markets-Walkthrough.webm`; see [acceptance evidence](docs/ACCEPTANCE_REPORT.md). NAS deployment remains deferred by the owner. The owner has authorized the verified `codex/partner-demo` branch for the private repository; main remains separate.
+**Start with [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md) for the exact implementation status, remaining work, and latest user decisions.** Local unit/API and browser acceptance tests are implemented and run. A private captioned walkthrough is available in `artifacts/Nidhiksh-Markets-Walkthrough-Music.mp4`; see [acceptance evidence](docs/ACCEPTANCE_REPORT.md). NAS deployment remains deferred by the owner. The owner has authorized merging the verified demo into `main` in the private repository.
 
 ## Local setup
 
@@ -42,7 +42,7 @@ Copy `.env.example` to `.env` only if `.env` does not already exist. Fill in cre
 | `ALPHA_VANTAGE_API_KEY` | Optional earnings and IPO schedules; conservative shared app budget |
 | `ALPHA_VANTAGE_OVERVIEW_ENABLED` | Defaults false; enable only for a subscription entitled to the premium company-overview endpoint |
 | `FRED_API_KEY` | Key verified; local storage is disabled under current API terms |
-| `INTRADAY_ENABLED`, `INTRADAY_REFRESH_SECONDS` | Enables both price caches; minimum60seconds, active/open-session refresh only |
+| `INTRADAY_ENABLED`, `INTRADAY_REFRESH_SECONDS` | Enables both internal caches; one newest quote per stock, minimum60seconds, active/open-session refresh only |
 | `COLLECTORS_ENABLED` | Defaults false; enables backend scheduled collection when explicitly set |
 | `DEMO_ENABLED` | Isolated, clearly labeled synthetic demonstration mode |
 | `PARTNER_DATA_DISPLAY_APPROVED` | Defaults false; Viewer access to real feed data requires rights review |
@@ -55,4 +55,4 @@ Run `make test`, `make build`, then `make e2e` against the running app. The buil
 
 Analyst data needs an entitled source. FRED storage stays off without written permission. Docker image execution, NAS/remote access and off-device backup remain unverified prerequisites, not completed deployment claims.
 
-The intended source repository is `https://github.com/Krupesh9/NidhikshMarkets.git`. This folder is prepared locally; the authorized ready branch is `codex/partner-demo`. No external app publication or NAS deployment has occurred.
+The intended source repository is `https://github.com/Krupesh9/NidhikshMarkets.git`. The verified demo is prepared for `main`, with review history in pull request #1. No external app publication or NAS deployment has occurred.

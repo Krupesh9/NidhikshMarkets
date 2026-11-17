@@ -1,4 +1,5 @@
 import {test,expect,type Page,type BrowserContext} from './fixtures';
+import {dateLabel} from '../lib/api';
 import fs from 'node:fs';
 import path from 'node:path';
 async function isolatedWorkspace(page:Page,context:BrowserContext){
@@ -22,7 +23,7 @@ test('candidate badges do not overlap or clip at one, three and five years',asyn
 });
 test('expanded heatmap details remain pinned and financial revenue cards use the latest concept',async({page,context})=>{
  await isolatedWorkspace(page,context);
- const revenues=page.locator('.company-financials>.reported-facts>article').filter({hasText:'Revenue · reported period'});await expect(revenues).toHaveCount(1);const facts=(await (await context.request.get('/api/instruments/AMD/fundamentals')).json()).data.facts;const latest=[facts.Revenues?.end,facts.RevenueFromContractWithCustomerExcludingAssessedTax?.end].filter(Boolean).sort().at(-1);await expect(revenues).toContainText(latest);await expect(page.getByText('Older revenue reporting concepts (1)',{exact:true})).toBeVisible();
+ const revenues=page.locator('.company-financials>.reported-facts>article').filter({hasText:'Revenue · reported period'});await expect(revenues).toHaveCount(1);const facts=(await (await context.request.get('/api/instruments/AMD/fundamentals')).json()).data.facts;const latest=[facts.Revenues?.end,facts.RevenueFromContractWithCustomerExcludingAssessedTax?.end].filter(Boolean).sort().at(-1);await expect(revenues).toContainText(dateLabel(latest));await expect(page.getByText('Older revenue reporting concepts (1)',{exact:true})).toBeVisible();
  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Markets',exact:true}).click();const cells=page.locator('.heatmap-cell');await cells.first().hover();const tip=page.getByRole('dialog',{name:/market details/});const selected=await tip.getAttribute('aria-label');
  await tip.getByRole('button',{name:'Expand company details'}).click();await cells.last().hover({force:true});await expect(tip).toHaveAttribute('aria-label',selected!);await expect(tip.getByRole('button',{name:'Open research'})).toBeVisible();
  await page.setViewportSize({width:390,height:900});const bounds=(await tip.boundingBox())!;expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(390);await page.keyboard.press('Escape');await expect(tip).toHaveCount(0);

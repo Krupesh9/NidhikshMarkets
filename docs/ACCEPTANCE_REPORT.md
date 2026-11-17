@@ -30,7 +30,7 @@ The initial run coincided with a temporarily unresponsive development API. It wa
 
 The recorder creates a temporary Admin and authenticates before creating the recorded browser page. It uses already cached daily-close data, source-labeled schedules and real UI controls. No login screen, passwords, API keys, raw headers, or provider refreshes are recorded. Its temporary account is removed afterward.
 
-Video: `artifacts/Nidhiksh-Markets-Walkthrough.webm` (ignored, private local file). The final recording is **66.00 seconds**, 1600×1000 at 25 fps, VP9 WebM, **12,746,812 bytes**, with **zero page errors**. Representative extracted frames were inspected for Home, Indicator Studio, Upcoming IPOs, expanded heatmap, earnings week and Settings. The Indicator Studio caption sits above the form so its Save button remains visible. Final calendar footage shows the request-budget pause and disabled refresh while cached events stay available. All temporary acceptance/walkthrough accounts were confirmed removed afterward.
+Video: `artifacts/Nidhiksh-Markets-Walkthrough.webm` (ignored, private local file). The latest recording is **72.32 seconds**, 1600×1000 at 25 fps, with **zero page errors**, and demonstrates automatic single-price selection and readable dates. Representative extracted frames were inspected for Home, Indicator Studio, Upcoming IPOs, expanded heatmap, earnings week and Settings. The Indicator Studio caption sits above the form so its Save button remains visible. Final calendar footage shows the request-budget pause and disabled refresh while cached events stay available. All temporary acceptance/walkthrough accounts were confirmed removed afterward.
 
 Chapter offsets are approximate:
 
@@ -50,7 +50,7 @@ Chapter offsets are approximate:
 
 Machine-readable recording evidence is in ignored `artifacts/walkthrough-metadata.json`.
 
-The video is silent with on-screen captions. It is intended for the owner’s local review. Provider display rights still require review before wider sharing.
+The original WebM retains captions without audio. The updated `artifacts/Nidhiksh-Markets-Walkthrough-Music.mp4` adds an original 112 BPM instrumental with gentle fades (H.264/AAC stereo, full decode verified, no clipping). The app itself remains silent. It is intended for the owner’s local review. Provider display rights still require review before wider sharing.
 
 The matching Playwright video encoder was installed into ignored `artifacts/browser-tools`. To recreate it on another Mac:
 
@@ -76,3 +76,9 @@ Latest app verification: **66 backend tests passed** and **14 Chrome E2E tests p
 A separate live, authenticated two-request check returned **26/26researched symbols in each feed**. The service enforces one shared batch per feed per60seconds, across browser clients. At roughly780requests for a full regular session, both feeds remain subject to the conservative1000/day cap and source cooldowns.
 
 The walkthrough is refreshed for these price cards. Its metadata separates manual source refreshes from normal automatic intraday requests; credentials and login remain excluded.
+
+## Single-price and readable-date refinement
+
+The current build removes both feed cards and automatically selects the newest valid market-event timestamp per symbol. Regression checks cover delayed/daily fallback, invalid/future quotes, consolidated timestamp ties, refresh failure cache retention, synthetic search isolation, accessible coverage information and regular-session Auto appearance. Dates use the requested month-day-year format with calendar-day preservation. Browser tests reuse source caches or explicit fixtures and do not spend provider allowance.
+
+Final refinement verification: **66 backend unit/API tests passed in 4.71s**, **18 Chrome checks passed in 1.1 minutes**, and the production build/typecheck passed. The full browser rerun passed after updating one legacy ISO-date expectation and waiting for chart readiness before fallback assertions. An independent review found and confirmed fixes for retaining the newer GET cache on POST failure and isolating synthetic search from real directory prices. The current local preview uses the reviewed immutable build.

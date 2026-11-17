@@ -39,6 +39,6 @@ test('theme follows market hours and news stays dismissed until a new update arr
   latest=true;await page.reload();await expect(banner).toContainText('New company update fixture');
   const analyst=page.locator('.analyst-panel');await expect(analyst).toContainText('premium data access');await expect(analyst.getByRole('button',{name:'Analyst data access required'})).toBeDisabled();
   await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Markets',exact:true}).click();
-  const ipos=page.getByRole('region',{name:'Upcoming IPOs'});await expect(ipos).toContainText('Anthropic, PBC');await expect(ipos).toContainText('2026-11-19');await expect(ipos.getByRole('link',{name:'Filed announcement'})).toHaveAttribute('href',/sec.gov/);
+  const ipos=page.getByRole('region',{name:'Upcoming IPOs'});await expect(ipos).toContainText('Anthropic, PBC');await expect(ipos).toContainText('Nov 19, 2026');await expect(ipos.getByRole('link',{name:'Filed announcement'})).toHaveAttribute('href',/sec.gov/);
  }finally{await context.request.put('/api/settings/workspace',{headers,data:original.workspace});}
 });

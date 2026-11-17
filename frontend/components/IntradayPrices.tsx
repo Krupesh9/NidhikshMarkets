@@ -1,7 +1,8 @@
 'use client';
-import {useEffect,useState} from 'react';
-import {Clock,Radio} from 'lucide-react';
-import {api,money,asOf} from '@/lib/api';
+import {useEffect,useId,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
+import {Info} from 'lucide-react';
+import {api,asOf} from '@/lib/api';
 export function useIntradayPrices({ready,mode,admin,sessionStatus,version}:{ready:boolean;mode:string;admin:boolean;sessionStatus?:string;version:number}){
  const [data,setData]=useState<any>(null),[error,setError]=useState('');
  useEffect(()=>{
@@ -11,6 +12,7 @@ export function useIntradayPrices({ready,mode,admin,sessionStatus,version}:{read
    if(busy||document.visibilityState==='hidden')return;busy=true;
    try{
     let next=await api('/quotes/intraday?mode=market',{signal:c.signal});
+    if(!c.signal.aborted){setData(next);setError('');}
     if(next.configured&&admin&&next.session?.status==='open'&&!next.budget?.paused)next=await api('/admin/quotes/intraday/refresh',{method:'POST',body:'{}',signal:c.signal});
     if(!c.signal.aborted){setData(next);setError('');}
    }catch(e){if(!c.signal.aborted)setError((e as Error).message);}finally{busy=false;}
@@ -20,7 +22,22 @@ export function useIntradayPrices({ready,mode,admin,sessionStatus,version}:{read
  },[ready,mode,admin,sessionStatus,version]);
  return {data,error};
 }
-export default function IntradayPrices({data,error,symbol,selected,onSelect}:{data:any;error:string;symbol:string;selected:string;onSelect:(feed:string)=>void}){
- const feeds=[['delayed_sip','Broad market','15–16m delayed'],['iex','IEX latest','Limited exchange coverage']];
- return <section className="intraday-prices" aria-label="Intraday price feeds"><div className="intraday-heading"><span><Radio size={14}/>Price views</span><small>{data?.configured?data.session?.status==='open'?'Checks every 60 seconds while this view is active':'Market closed · cached prices':'Intraday refresh disabled'}</small></div><div role="tablist" aria-label="Price feed">{feeds.map(([id,label,coverage])=>{const source=data?.feeds?.[id],item=source?.items?.[symbol];return <button role="tab" aria-selected={selected===id} key={id} className={selected===id?'selected':''} onClick={()=>onSelect(id)}><span><b>{label}</b><small>{coverage}</small></span><strong>{money(item?.price)}</strong><small><Clock size={11}/>{item?.as_of?asOf(item.as_of):source?.status==='waiting_for_delayed_session'?'Waiting for delayed session prices':'No cached intraday price'}</small>{item?.status==='stale'&&<em>Stale trade timestamp</em>}</button>;})}</div>{error&&<p className="notice" role="status">{error} · cached prices retained.</p>}{data?.budget?.paused&&<p className="notice">Price updates paused until {asOf(data.budget.resume_at)} to protect the request allowance.</p>}<p className="intraday-note">{data?.configured?'Daily charts and Buy/Sell reference prices remain based on completed daily bars. Change uses the prior consolidated session close when available.':'The daily close remains available. Automatic intraday access must be enabled on the backend.'}</p></section>;
+// Select by market-event time, never by the time a cache was fetched.
+export function latestAvailableQuote(data:any,symbol:string,daily:any,mode='market'){
+ const fallback=typeof daily?.price==='number'&&Number.isFinite(daily.price)&&daily.price>0?{...daily,source:mode==='demo'?'demo':'daily',as_of:daily.freshness?.as_of}:null;
+ if(mode!=='market')return fallback;
+ const candidates=[fallback,...(data?.configured?['delayed_sip','iex'].map(source=>{
+  const item=data.feeds?.[source]?.items?.[symbol];return item?{...item,source}:null;
+ }):[])].filter(item=>item&&typeof item.price==='number'&&Number.isFinite(item.price)&&item.price>0&&Number.isFinite(Date.parse(item.as_of))&&Date.parse(item.as_of)<=Date.now()+5000);
+ // Prefer consolidated data over a single venue when event timestamps tie.
+ candidates.sort((a,b)=>Date.parse(b.as_of)-Date.parse(a.as_of)||(a.source==='iex'?1:0)-(b.source==='iex'?1:0));
+ return candidates[0]||(fallback&&!Number.isFinite(Date.parse(fallback.as_of))?fallback:null);
+}
+export default function QuoteInfo({quote,data,error='',symbol}:{quote:any;data?:any;error?:string;symbol:string}){
+ const [open,setOpen]=useState(false),[position,setPosition]=useState<any>({});const button=useRef<HTMLButtonElement>(null);const id=useId();
+ function show(){const box=button.current?.getBoundingClientRect();if(!box)return;setPosition({left:Math.max(12,Math.min(box.left,window.innerWidth-Math.min(360,window.innerWidth-24)-12)),...(box.bottom+230>window.innerHeight?{bottom:window.innerHeight-box.top+8}:{top:box.bottom+8})});setOpen(true);}
+ useEffect(()=>{if(!open)return;const close=()=>setOpen(false);window.addEventListener('scroll',close,true);window.addEventListener('resize',close);return()=>{window.removeEventListener('scroll',close,true);window.removeEventListener('resize',close);};},[open]);
+ const source=quote?.source;
+ const coverage=source==='iex'?'Latest available trade · limited exchange coverage. This covers one exchange and may differ from the broader market.':source==='delayed_sip'?'Broad-market price · completed minute close, about 15–16 minutes delayed.':source==='demo'?'Synthetic demonstration price · not market data.':quote?.price!=null?'Last completed daily close · a newer intraday quote is not available.':'No cached price is available yet.';
+ return <><button ref={button} type="button" className="quote-info" aria-label={`${symbol} price information`} aria-expanded={open} aria-describedby={open?id:undefined} onMouseEnter={show} onMouseLeave={()=>setOpen(false)} onFocus={show} onBlur={()=>setOpen(false)} onClick={event=>{event.stopPropagation();show();}} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setOpen(false);}}}><Info size={14}/></button>{open&&createPortal(<span id={id} role="tooltip" className="quote-info-note" style={position}><b>{symbol} · Price information</b><span>{coverage}</span><span>Price time: {asOf(quote?.as_of)}</span>{(quote?.status==='stale'||quote?.freshness?.stale)&&<span>Older cached price · no newer quote is available.</span>}{data?.session?.status&&data.session.status!=='open'&&<span>Market closed · showing the newest cached price.</span>}{data?.budget?.paused?<span>Updates paused until {asOf(data.budget.resume_at)} to protect the request allowance.</span>:source!=='demo'&&data?.configured&&<span>Checks about once per minute during regular market hours while this view is active.</span>}{error&&<span>Refresh unavailable · cached price retained.</span>}{source!=='demo'&&<span>Daily charts and Buy/Sell reference prices use completed daily bars.</span>}</span>,document.body)}</>;
 }

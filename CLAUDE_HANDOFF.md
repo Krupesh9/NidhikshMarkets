@@ -1,6 +1,6 @@
 # Nidhiksh Markets — current local handoff
 
-The owner reauthorized completion, parallel agents, E2E testing and the walkthrough on November 17, 2026. Local app work and discovered regressions have been addressed. **Latest authorization:** the owner requested a GitHub branch push. Prepare and push `codex/partner-demo` to the private repository https://github.com/Krupesh9/NidhikshMarkets.git after fresh verification. Do not merge main or deploy externally. NAS work remains explicitly deferred until after the demo.
+The owner reauthorized completion, parallel agents, E2E testing and the walkthrough on November 17, 2026. Local app work and discovered regressions have been addressed. **Latest authorization:** the owner requested parallel agents, the single newest price per stock, readable Nov 17, 2026 dates, an upbeat walkthrough soundtrack, and merging all verified changes into `main` in the private repository https://github.com/Krupesh9/NidhikshMarkets.git. External deployment is outside this authorization. NAS work remains explicitly deferred until after the demo.
 
 ## Running app and first actions
 
@@ -75,3 +75,11 @@ The owner requested both free price views and authorized pushing the ready branc
 `INTRADAY_ENABLED=true` and `INTRADAY_REFRESH_SECONDS=60` are configured only in the private local `.env`. Example defaults remain off. The new migration is b92e71a605c8, adding a separate price cache. Browser regression fixtures disable actual polling and mock both feeds explicitly.
 
 A `partner` Viewer was created locally. Credentials are in ignored `runtime/partner-login.txt`, mode600; never print or commit them. No credentials were sent. Viewer market-data display is still gated; default demonstration mode is available. The owner selected same-Mac access for the demo. Post-demo GitHub Pages was suggested, but the full app needs a private backend/database host; no public publishing or network changes are authorized by the same-Mac choice. See docs/PARTNER_DEMO.md.
+
+## Latest single-price demo refinement
+
+The two price cards and feed selector are removed. The app compares actual market-event timestamps and displays one newest valid quote per stock in the headline, watchlist, market cards and search. Consolidated data wins timestamp ties; daily close is the fallback. A small accessible information icon describes delay, limited venue coverage, timestamp, stale data and request pauses. A successful cache read is retained even when a subsequent refresh fails; synthetic search never reuses real directory quotes.
+
+Displayed dates use `dateLabel` (Nov 17, 2026); date-only values keep their exact calendar day, and timestamp displays retain ET time. Charts and historical research keep their daily basis. The updated 72.32-second walkthrough with original music is `artifacts/Nidhiksh-Markets-Walkthrough-Music.mp4`; no login or secrets appear. The app does not autoplay music.
+
+Latest verification: 66 backend tests and 18 Chrome checks passed; production build/typecheck passed. The current preview serves the reviewed immutable build. The music video is 72.32s, H.264/AAC stereo, 3,665,410 bytes, with a full decode check and no clipping.

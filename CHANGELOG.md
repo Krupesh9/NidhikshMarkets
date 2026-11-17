@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0.1 — 2026-11-17
+
+- Automatically show one newest available quote per stock, with timing and market coverage behind a small information icon.
+- Use readable month-day-year dates throughout financials, calendars, IPOs and charts; preserve calendar-day dates across time zones.
+- Refresh the local walkthrough and add an original upbeat instrumental soundtrack.
+
 ## 0.1.0.0 — 2026-11-17
 
 Initial private research application.
