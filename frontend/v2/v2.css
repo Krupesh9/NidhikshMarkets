@@ -231,7 +231,6 @@ html.v2-root body{background:var(--v-bg);color:var(--v-ink);font:14px/1.5 var(--
 
 /* Reused classic components: give them room and neutral surfaces in the new frame. */
 .v2-legacy{color:var(--v-ink)}
-.v2-legacy section,.v2-legacy .panel{background:transparent}
 
 @media (max-width:1280px){.v2-chart-layout{grid-template-columns:minmax(0,1fr)}.v2-side{grid-row:auto;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}.v2-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:1024px){.v2-body{grid-template-columns:1fr}.v2-rail{position:static;height:auto;max-height:260px;border-right:0;border-bottom:1px solid var(--v-line)}.v2-nav button span,.v2-session{display:none}.v2-grid{grid-template-columns:1fr}}
@@ -293,3 +292,24 @@ html.v2-root body{background:var(--v-bg);color:var(--v-ink);font:14px/1.5 var(--
 .v2-fin .v2-table a{color:var(--v-accent);display:inline-flex;align-items:center;gap:3px}
 @media (max-width:1100px){.v2-fin-grid{grid-template-columns:1fr}}
 @media (max-width:760px){.v2-fin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Reused dialogs (Indicator Studio etc.): solid surface, dark scrim, v2 controls */
+html.v2-root .modal-backdrop{background:rgba(4,7,11,.72);backdrop-filter:blur(6px);z-index:80}
+html.v2-root[data-theme=light] .modal-backdrop{background:rgba(15,21,37,.45)}
+html.v2-root .modal{background:var(--v-surface);color:var(--v-ink);border:1px solid var(--v-line-strong);border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.55);font-family:var(--v-body)}
+html.v2-root .modal header{border-color:var(--v-line)}
+html.v2-root .modal h2{font-family:var(--v-head);color:var(--v-ink)}
+html.v2-root .modal .eyebrow{color:var(--v-accent)}
+html.v2-root .modal .muted,html.v2-root .modal p{color:var(--v-muted)}
+html.v2-root .modal .studio-section{background:var(--v-raised);border-color:var(--v-line);border-radius:12px}
+html.v2-root .modal input[type=text],html.v2-root .modal input[type=number],html.v2-root .modal input:not([type]),html.v2-root .modal select{background:var(--v-bg);color:var(--v-ink);border:1px solid var(--v-line-strong);border-radius:8px;font-family:var(--v-mono)}
+html.v2-root .modal input:focus{border-color:var(--v-accent);outline:none;box-shadow:0 0 0 3px var(--v-accent-bg)}
+html.v2-root .modal input[type=checkbox]{accent-color:var(--v-accent)}
+html.v2-root .modal label{color:var(--v-ink)}
+html.v2-root .modal .periods label{background:var(--v-bg);border-color:var(--v-line-strong);color:var(--v-ink)}
+html.v2-root .modal .periods label:has(input:checked){background:var(--v-accent-bg);border-color:var(--v-accent)}
+html.v2-root .modal .primary{background:var(--v-accent);color:#fff;border-color:transparent}
+html.v2-root .modal .secondary{background:transparent;color:var(--v-ink);border:1px solid var(--v-line-strong)}
+html.v2-root .modal .icon-button{color:var(--v-muted)}
+html.v2-root .modal .icon-button:hover{color:var(--v-ink);background:var(--v-hover)}
+html.v2-root .modal .error{color:var(--v-down)}
