@@ -4,6 +4,7 @@ import {ArrowDown, ArrowUp, ChevronDown} from 'lucide-react';
 import {api, money} from '@/lib/api';
 import {Change, Spark} from './Terminal';
 import {pct, tone} from './ta';
+import Logo from './Logo';
 
 type Key = 'symbol' | 'name' | 'sector' | 'weight' | 'price' | 'change_percent' | 'month';
 const UNIVERSES = [['sp500', 'S&P 500 (IVV)'], ['nasdaq100', 'Nasdaq 100 (QQQ)'], ['russell2000', 'Russell 2000 (IWM)']] as const;
@@ -97,7 +98,7 @@ function Constituents({mode, watchlists, onChoose}: {mode: string; watchlists: a
         <tbody>
           {!data && <tr><td colSpan={8}><div className="v2-skeleton" style={{height: 200}} /></td></tr>}
           {view.map((r: any) => <tr key={r.symbol} tabIndex={0} onClick={() => onChoose(r.symbol)} onKeyDown={e => e.key === 'Enter' && onChoose(r.symbol)}>
-            <td><b className="v2-ticker">{r.symbol}</b></td><td className="ellipsis">{r.name}</td><td className="muted ellipsis">{r.sector}</td>
+            <td><span className="v2-sym"><Logo symbol={r.symbol} size={22} /><b className="v2-ticker">{r.symbol}</b></span></td><td className="ellipsis">{r.name}</td><td className="muted ellipsis">{r.sector}</td>
             <td className="r mono">{typeof r.weight === 'number' && r.weight > 0 ? `${r.weight.toFixed(2)}%` : '—'}</td>
             <td className="r mono">{money(r.price)}</td>
             <td className="r"><span className={`v2-cell ${tone(r.change_percent)}`}>{pct(r.change_percent)}</span></td>
@@ -136,7 +137,7 @@ function Technicals({mode, onChoose}: {mode: string; onChoose: (s: string) => vo
           {(data?.items || []).map((r: any) => {
             const dist = r.close != null && r.sma200 ? (r.close / r.sma200 - 1) * 100 : null;
             return <tr key={r.symbol} tabIndex={0} onClick={() => onChoose(r.symbol)} onKeyDown={e => e.key === 'Enter' && onChoose(r.symbol)}>
-              <td><b className="v2-ticker">{r.symbol}</b></td><td className="ellipsis">{r.name}</td>
+              <td><span className="v2-sym"><Logo symbol={r.symbol} size={22} /><b className="v2-ticker">{r.symbol}</b></span></td><td className="ellipsis">{r.name}</td>
               <td className="r mono">{money(r.close)}</td>
               <td className={`r mono ${tone(dist)}`}>{pct(dist, 1)}</td>
               <td><RsiBar value={r.rsi} /></td>

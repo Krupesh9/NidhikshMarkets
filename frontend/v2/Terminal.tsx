@@ -10,9 +10,10 @@ import QuoteInfo, {latestAvailableQuote, useIntradayPrices} from '@/components/I
 import Heatmap from '@/components/Heatmap';
 import EarningsCalendar from '@/components/EarningsCalendar';
 import UpcomingIPOs from '@/components/UpcomingIPOs';
-import Financials from '@/components/Financials';
+import Financials from './Financials';
 import IndicatorStudio from '@/components/IndicatorStudio';
 import Screener from './Screener';
+import Logo, {TrackedSymbols} from './Logo';
 import {keyStats, pct, periodReturns, technicalSummary, tone} from './ta';
 
 const MarketChart = dynamic(() => import('@/components/MarketChart'), {ssr: false, loading: () => <div className="v2-skeleton" style={{height: 460}} />});
@@ -49,18 +50,28 @@ export function Change({value, className = ''}: {value: number | null | undefine
   return <span className={`v2-chg ${t} ${className}`}>{t === 'up' ? <TrendingUp size={12} aria-hidden /> : t === 'down' ? <TrendingDown size={12} aria-hidden /> : null}{pct(value)}</span>;
 }
 
-function Gauge({score, label}: {score: number; label: string}) {
-  const angle = -90 + ((score + 1) / 2) * 180;
-  return <figure className="v2-gauge" aria-label={`Indicator summary: ${label}`}>
-    <svg viewBox="0 0 200 112" aria-hidden="true">
-      <defs><linearGradient id="v2g" x1="0" x2="1"><stop offset="0" stopColor="var(--v-down)" /><stop offset=".5" stopColor="var(--v-muted)" /><stop offset="1" stopColor="var(--v-up)" /></linearGradient></defs>
-      <path d="M16 100 A84 84 0 0 1 184 100" fill="none" stroke="url(#v2g)" strokeWidth="12" strokeLinecap="round" opacity=".9" />
-      <g transform={`rotate(${angle} 100 100)`}><line x1="100" y1="100" x2="100" y2="30" stroke="var(--v-ink)" strokeWidth="3" strokeLinecap="round" /></g>
-      <circle cx="100" cy="100" r="6" fill="var(--v-ink)" />
-    </svg>
-    <figcaption className={tone(score > 0.1 ? 1 : score < -0.1 ? -1 : 0)}>{label}</figcaption>
-    <div className="v2-gauge-scale"><span>Strong sell</span><span>Neutral</span><span>Strong buy</span></div>
-  </figure>;
+const LEVELS = ['Strong sell', 'Sell', 'Neutral', 'Buy', 'Strong buy'] as const;
+function levelOf(score: number) { return score < -0.5 ? 0 : score < -0.1 ? 1 : score <= 0.1 ? 2 : score <= 0.5 ? 3 : 4; }
+
+function Rating({score, label}: {score: number; label: string}) {
+  const level = levelOf(score);
+  const cls = level < 2 ? 'down' : level > 2 ? 'up' : 'flat';
+  return <div className="v2-rating" aria-label={`Indicator summary: ${label}`}>
+    <div className={`v2-rating-head ${cls}`}>{level > 2 ? <TrendingUp size={20} aria-hidden /> : level < 2 ? <TrendingDown size={20} aria-hidden /> : <Activity size={20} aria-hidden />}<b>{label}</b></div>
+    <div className="v2-rating-scale" aria-hidden>
+      {LEVELS.map((l, i) => <span key={l} className={`s${i} ${i === level ? 'on' : ''}`}>{l}</span>)}
+    </div>
+  </div>;
+}
+
+function VoteBar({title, c}: {title: string; c: {buy: number; neutral: number; sell: number}}) {
+  const total = c.buy + c.neutral + c.sell || 1;
+  return <div className="v2-votebar">
+    <div className="v2-votebar-top"><span>{title}</span><span className="mono"><b className="up">{c.buy}</b> · <b className="flat">{c.neutral}</b> · <b className="down">{c.sell}</b></span></div>
+    <div className="v2-votebar-track" role="img" aria-label={`${c.buy} buy, ${c.neutral} neutral, ${c.sell} sell`}>
+      <i className="up" style={{width: `${(c.buy / total) * 100}%`}} /><i className="flat" style={{width: `${(c.neutral / total) * 100}%`}} /><i className="down" style={{width: `${(c.sell / total) * 100}%`}} />
+    </div>
+  </div>;
 }
 
 export default function Terminal() {
@@ -127,6 +138,7 @@ export default function Terminal() {
 
   const intraday = useIntradayPrices({ready, mode, admin, sessionStatus: session?.status, version: 0});
   const activeList = listId === 'tracked' ? null : watchlists.find(w => w.id === listId);
+  const tracked = useMemo(() => new Set(universe.map(u => u.symbol as string)), [universe]);
   const railSymbols: string[] = useMemo(() => activeList ? activeList.symbols : universe.map(u => u.symbol), [activeList, universe]);
 
   useEffect(() => {
@@ -164,7 +176,7 @@ export default function Terminal() {
 
   const tape = (overview?.items || []).filter((i: any) => i.proxy);
 
-  return <div className="v2">
+  return <TrackedSymbols.Provider value={tracked}><div className="v2">
     <a className="v2-skip" href="#v2-main">Skip to content</a>
     <header className="v2-top">
       <div className="v2-brand"><img src="/nidhiksh-logo.png" alt="" width={26} height={26} /><span>Nidhiksh<em>Pulse</em></span></div>
@@ -202,7 +214,7 @@ export default function Terminal() {
             const q = quoteFor(s);
             const name = universe.find(u => u.symbol === s)?.name || '';
             return <li key={s}><button className={s === symbol && view === 'chart' ? 'on' : ''} onClick={() => choose(s)}>
-              <span className="v2-rail-sym"><b>{s}</b><small>{name}</small></span>
+              <Logo symbol={s} size={30} /><span className="v2-rail-sym"><b>{s}</b><small>{name}</small></span>
               <span className="v2-rail-px"><span className="mono">{q?.price == null ? '—' : money(q.price)}</span><Change value={q?.change_percent} /></span>
             </button></li>;
           })}
@@ -221,7 +233,7 @@ export default function Terminal() {
       </main>
     </div>
     {toast && <div className="v2-toast" role="status" aria-live="polite">{toast}</div>}
-  </div>;
+  </div></TrackedSymbols.Provider>;
 }
 
 function SearchBox({admin, onChoose, onToast}: {admin: boolean; onChoose: (s: string) => void; onToast: (s: string) => void}) {
@@ -272,7 +284,7 @@ function SearchBox({admin, onChoose, onToast}: {admin: boolean; onChoose: (s: st
     {open && items.length > 0 && <ul id="v2-search-list" role="listbox">
       {items.map((i, n) => <li key={i.symbol} role="option" aria-selected={n === active}>
         <button onMouseDown={e => e.preventDefault()} onClick={() => pick(i)} className={n === active ? 'on' : ''}>
-          <b>{i.symbol}</b><span>{i.name}</span>
+          <span className="v2-search-sym"><Logo symbol={i.symbol} size={22} /><b>{i.symbol}</b></span><span>{i.name}</span>
           {i.cached ? <span className="mono">{i.price == null ? '' : money(i.price)}</span> : <span className="v2-pill">{admin ? <><Plus size={11} />Add</> : 'Not cached'}</span>}
         </button>
       </li>)}
@@ -365,7 +377,7 @@ function MarketsView({mode, overview, onChoose}: {mode: string; overview: any; o
       <table className="v2-table">
         <thead><tr><th>Symbol</th><th>Company</th><th>Sector</th><th className="r">Price</th><th className="r">Change</th><th className="r">Trend</th></tr></thead>
         <tbody>{moverRows.map(r => <tr key={r.symbol} onClick={() => onChoose(r.symbol)} tabIndex={0} onKeyDown={e => e.key === 'Enter' && onChoose(r.symbol)}>
-          <td><b>{r.symbol}</b></td><td className="ellipsis">{r.name}</td><td className="muted ellipsis">{r.sector}</td>
+          <td><span className="v2-sym"><Logo symbol={r.symbol} size={22} /><b>{r.symbol}</b></span></td><td className="ellipsis">{r.name}</td><td className="muted ellipsis">{r.sector}</td>
           <td className="r mono">{money(r.price)}</td><td className="r"><Change value={r.change_percent} /></td>
           <td className="r"><Spark values={(r.history || []).map((h: any) => h.value)} width={80} height={22} /></td>
         </tr>)}</tbody>
@@ -375,7 +387,7 @@ function MarketsView({mode, overview, onChoose}: {mode: string; overview: any; o
     <section className="v2-panel" aria-labelledby="global-h">
       <header><h2 id="global-h">Global &amp; commodities</h2><small>ETF proxies, not the indices</small></header>
       <ul className="v2-list">{global.map((i: any) => <li key={i.symbol}><button onClick={() => onChoose(i.symbol)} title={i.note}>
-        <span><b>{i.label}</b><small>{i.symbol}</small></span><span className="mono">{i.price == null ? '—' : money(i.price)}</span><Change value={i.change_percent} />
+        <span className="v2-sym"><Logo symbol={i.symbol} size={26} /><span className="v2-col"><b>{i.label}</b><small>{i.symbol}</small></span></span><span className="mono">{i.price == null ? '—' : money(i.price)}</span><Change value={i.change_percent} />
       </button></li>)}</ul>
     </section>
   </div>;
@@ -383,7 +395,7 @@ function MarketsView({mode, overview, onChoose}: {mode: string; overview: any; o
 
 function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: string; mode: string; admin: boolean; intraday: any; theme: string; onAdd?: () => void}) {
   const [range, setRange] = useState<string>(() => readPref('range', '1y'));
-  const [type, setType] = useState<string>(() => readPref('chart', 'candle'));
+  const [type, setType] = useState<string>(() => { const t: string = readPref<string>('chart', 'candlestick'); return t === 'candle' ? 'candlestick' : t; });
   const [strategy, setStrategy] = useState<string>(() => readPref('strategy', 'trend'));
   const [showSignals, setShowSignals] = useState<boolean>(() => readPref<'on' | 'off'>('signals', 'off') === 'on');
   const [bars, setBars] = useState<any>(null);
@@ -439,7 +451,7 @@ function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: strin
   return <div className="v2-chart-layout">
     <section className="v2-panel v2-quote" aria-labelledby="q-h">
       <div className="v2-quote-id">
-        <span className="v2-mark" aria-hidden>{symbol.slice(0, 2)}</span>
+        <Logo symbol={symbol} size={44} />
         <div><h1 id="q-h">{symbol}</h1><p>{quote?.name || bars?.symbol || ''}</p></div>
         {onAdd && <button className="v2-btn ghost" onClick={onAdd}><Plus size={14} />Watchlist</button>}
       </div>
@@ -454,7 +466,7 @@ function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: strin
       <div className="v2-toolbar">
         <div className="v2-seg" role="group" aria-label="Range">{RANGES.map(r => <button key={r} className={range === r ? 'on' : ''} disabled={!!bars && !supported.includes(r)} onClick={() => setRange(r)}>{r.toUpperCase()}</button>)}</div>
         <div className="v2-seg" role="group" aria-label="Chart type">
-          {([['candle', CandlestickChart], ['line', LineChart], ['area', AreaChart]] as const).map(([t, Icon]) => <button key={t} className={type === t ? 'on' : ''} onClick={() => setType(t)} aria-label={`${t} chart`} title={`${t[0].toUpperCase()}${t.slice(1)}`}><Icon size={15} /></button>)}
+          {([['candlestick', CandlestickChart], ['line', LineChart], ['area', AreaChart]] as const).map(([t, Icon]) => <button key={t} className={type === t ? 'on' : ''} onClick={() => setType(t)} aria-label={`${t === 'candlestick' ? 'Candlestick' : t} chart`} title={t === 'candlestick' ? 'Candles' : `${t[0].toUpperCase()}${t.slice(1)}`}><Icon size={15} /></button>)}
         </div>
         <span className="grow" />
         <label className="v2-toggle"><input type="checkbox" checked={showSignals} onChange={e => setShowSignals(e.target.checked)} /><span>Research signals</span></label>
@@ -476,10 +488,10 @@ function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: strin
       <section className="v2-panel" aria-labelledby="tech-h">
         <header><h2 id="tech-h">Technical summary</h2><small>Daily · rule votes</small></header>
         {tech ? <>
-          <Gauge score={tech.score} label={tech.label} />
+          <Rating score={tech.score} label={tech.label} />
           <div className="v2-votes">
-            <div><small>Moving averages</small><span className="up">{tech.maCounts.buy} buy</span><span>{tech.maCounts.neutral} neutral</span><span className="down">{tech.maCounts.sell} sell</span></div>
-            <div><small>Oscillators</small><span className="up">{tech.oscCounts.buy} buy</span><span>{tech.oscCounts.neutral} neutral</span><span className="down">{tech.oscCounts.sell} sell</span></div>
+            <VoteBar title="Moving averages" c={tech.maCounts} />
+            <VoteBar title="Oscillators" c={tech.oscCounts} />
           </div>
           <details className="v2-details"><summary>Show each rule</summary>
             <table className="v2-table compact"><tbody>{[...tech.osc, ...tech.ma].map(r => <tr key={r.name}><td>{r.name}</td><td className="r mono">{r.value == null ? '—' : r.value.toFixed(2)}</td><td className={`r ${r.vote === 'buy' ? 'up' : r.vote === 'sell' ? 'down' : 'muted'}`}>{r.vote}</td></tr>)}</tbody></table>
@@ -511,7 +523,7 @@ function ChartView({symbol, mode, admin, intraday, theme, onAdd}: {symbol: strin
       <div className="v2-seg" role="tablist">{(['news', 'filings', 'financials', 'signals'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}</div>
       {tab === 'news' && <FeedList items={news?.items} empty={news?.note || 'No cached news.'} render={(n: any) => <a href={n.url} target="_blank" rel="noreferrer"><b>{n.title}</b><small>{n.publisher || n.provider} · {asOf(n.published_at || n.discovered_at)}</small><ExternalLink size={13} aria-hidden /></a>} />}
       {tab === 'filings' && <FeedList items={filings?.items} empty="No cached filings." render={(f: any) => <a href={f.url} target="_blank" rel="noreferrer"><b><span className="v2-pill">{f.form}</span> SEC filing</b><small>Filed {dateLabel(f.filing_date?.slice(0, 10))}</small><ExternalLink size={13} aria-hidden /></a>} />}
-      {tab === 'financials' && <div className="v2-legacy">{fundamentals ? <Financials data={fundamentals} /> : <p className="v2-note">No reported financials cached.</p>}</div>}
+      {tab === 'financials' && (fundamentals ? <Financials data={fundamentals} symbol={symbol} /> : <p className="v2-note">No reported financials cached.</p>)}
       {tab === 'signals' && <FeedList items={[...events].reverse().slice(0, 30)} empty="No historical research candidates for this symbol." render={(s: Signal) => <div className="v2-signal">
         <span className={`v2-pill ${s.kind === 'entry' ? 'up' : 'down'}`}>{s.kind === 'entry' ? '▲ Buy' : '▼ Sell'}</span>
         <b>{s.label || s.strategy}</b><small>{dateLabel(s.time.slice(0, 10))} · {money(s.price)} · {s.strategy.replace('_', ' ')} v{s.version}</small>
