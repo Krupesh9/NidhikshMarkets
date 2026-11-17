@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+.venv
+**/node_modules
+**/.next*
+**/__pycache__
+**/.pytest_cache
+**/.hypothesis
+runtime
+backups
+artifacts
+starter_database/*.sqlite
+*.log
+
+**/playwright-report
+**/test-results
