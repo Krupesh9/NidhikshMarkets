@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Bot, Check, Plus, Share2 } from 'lucide-react';
+import { ShareButton } from '@/components/sharing/ShareButton';
 import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
@@ -60,14 +61,18 @@ export function HeaderActions({ ticker, name, canShare }: { ticker: string; name
       <Button size="sm" variant="secondary" onClick={toggleWatch} disabled={!symbols || busy} aria-pressed={inList}>
         {inList ? <Check aria-hidden /> : <Plus aria-hidden />} {inList ? 'On watchlist' : 'Add to watchlist'}
       </Button>
-      <Tip content={canShare ? 'Sharing company snapshots is coming soon in Shared.' : 'Sharing is available on Pro and above.'}>
-        {/* span wrapper so the tooltip still fires on a disabled button */}
-        <span tabIndex={0} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">
-          <Button size="sm" variant="outline" disabled aria-disabled>
-            <Share2 aria-hidden /> Share
-          </Button>
-        </span>
-      </Tip>
+      {canShare ? (
+        <ShareButton itemType="company" itemId={ticker} title={`${ticker} · ${name}`} size="sm" variant="outline" />
+      ) : (
+        <Tip content="Sharing is available on Pro and above.">
+          {/* span wrapper so the tooltip still fires on a disabled button */}
+          <span tabIndex={0} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">
+            <Button size="sm" variant="outline" disabled aria-disabled>
+              <Share2 aria-hidden /> Share
+            </Button>
+          </span>
+        </Tip>
+      )}
     </div>
   );
 }
