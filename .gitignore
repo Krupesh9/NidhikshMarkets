@@ -24,3 +24,4 @@ test-results/
 artifacts/
 .next-build/
 .next-dev/
+.gstack/

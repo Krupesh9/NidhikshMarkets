@@ -1,0 +1,80 @@
+# NidhikshDesk — phase-two stack (Postgres 16 + pgvector, Redis, app). Not needed for the local demo,
+# which runs on SQLite via `npm run dev`. See README "Docker (phase two)".
+#   cp .env.example .env    # fill NEXTAUTH_SECRET + ENCRYPTION_KEY at minimum
+#   docker compose up --build
+#   docker compose exec app npm run db:seed
+# Ports avoid the other local apps (3000/8000, 3100/8100): app 4200, Postgres 5433, Redis 6380.
+name: nidhikshdesk
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nidhikshdesk
+      POSTGRES_PASSWORD: nidhikshdesk
+      POSTGRES_DB: nidhikshdesk
+    ports: ["127.0.0.1:5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nidhikshdesk -d nidhikshdesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6380:6379"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PRISMA_SCHEMA: prisma/postgres/schema.prisma
+    image: nidhikshdesk:pg
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overrides .env so the container talks to the compose services, not local SQLite.
+      DATABASE_URL: postgresql://nidhikshdesk:nidhikshdesk@db:5432/nidhikshdesk
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_URL: http://localhost:4200
+      # The host's Nidhiksh cache path is not mounted; the provider chain skips it and falls back.
+      NIDHIKSH_DB_PATH: /data/nidhiksh/market.sqlite
+    ports: ["127.0.0.1:4200:4200"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Placeholder for the phase-two worker tier (BullMQ consumers: data refresh, embeddings, alerts).
+  # Enable with: docker compose --profile worker up
+  worker:
+    image: nidhikshdesk:pg
+    profiles: ["worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nidhikshdesk:nidhikshdesk@db:5432/nidhikshdesk
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "echo 'worker placeholder: no queue consumers yet (src/lib/jobs.ts is in-process)'; sleep infinity"]
+    depends_on:
+      app:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata: {}
+  redisdata: {}

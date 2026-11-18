@@ -1,0 +1,59 @@
+name: NidhikshDesk CI
+on:
+  push:
+    branches: [main, 'feat/alphadesk', 'codex/**']
+    paths: ['alphadesk/**', '.github/workflows/nidhikshdesk-ci.yml']
+  pull_request:
+    paths: ['alphadesk/**', '.github/workflows/nidhikshdesk-ci.yml']
+permissions:
+  contents: read
+concurrency:
+  group: nidhikshdesk-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    working-directory: alphadesk
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      # No provider secrets in CI: everything runs on the deterministic mock universe.
+      ALPHADESK_FORCE_MOCK: '1'
+      DATABASE_URL: 'file:./ci.db'
+      NEXTAUTH_URL: 'http://127.0.0.1:4200'
+      NEXTAUTH_SECRET: 'ci-only-not-a-secret-0123456789abcdef'
+      ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+      SEC_USER_AGENT: 'NidhikshDesk CI ci@example.com'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: alphadesk/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prisma client + schema (SQLite)
+        run: npx prisma generate && npx prisma db push --skip-generate
+      - name: Validate phase-two Postgres schema
+        run: npx prisma validate --schema prisma/postgres/schema.prisma
+        env:
+          DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests (Vitest)
+        run: npm test
+      - name: Seed demo data
+        run: npm run db:seed
+      - name: Production build
+        run: npm run build
+      - name: Smoke test against production server
+        run: |
+          npx next start -H 127.0.0.1 -p 4200 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4200/api/auth/csrf >/dev/null && break; sleep 1; done
+          ND_TIMEOUT=30 bash tests/smoke.sh
+      - name: Server log on failure
+        if: failure()
+        run: tail -200 server.log || true
