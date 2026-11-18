@@ -1,4 +1,4 @@
-import { Briefcase, Building2, FlaskConical, LayoutDashboard, Layers, Settings, Share2, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { Building2, CalendarDays, FlaskConical, LayoutDashboard, Settings, SlidersHorizontal, Star, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -12,15 +12,15 @@ export interface NavItem {
   match?: string[];
 }
 
+/** Portfolios, Baskets and Shared are hidden from navigation (routes still work by URL). */
 export const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, mobile: true, shortcut: 'g d' },
   { href: '/research', label: 'Research', icon: FlaskConical, mobile: true, shortcut: 'g r' },
   { href: '/company/NVDA', label: 'Company', icon: Building2, match: ['/company'] },
+  { href: '/watchlist', label: 'Watchlist', icon: Star, mobile: true, shortcut: 'g w' },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays, shortcut: 'g c' },
   { href: '/screener', label: 'Screener', icon: SlidersHorizontal, mobile: true, shortcut: 'g s' },
-  { href: '/portfolios', label: 'Portfolios', icon: Briefcase, mobile: true, shortcut: 'g p' },
-  { href: '/baskets', label: 'Baskets', icon: Layers, shortcut: 'g b' },
-  { href: '/shared', label: 'Shared', icon: Share2, mobile: true, shortcut: 'g h' },
-  { href: '/settings', label: 'Settings', icon: Settings, shortcut: 'g ,' },
+  { href: '/settings', label: 'Settings', icon: Settings, mobile: true, shortcut: 'g ,' },
 ];
 
 export function isActive(item: NavItem, pathname: string): boolean {

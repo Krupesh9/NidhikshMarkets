@@ -59,7 +59,7 @@ export default async function CompanyPage({ params }: { params: { ticker: string
   const cik = core.profile?.cik;
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4">
+    <div className="mx-auto max-w-[1400px] space-y-6">
       <Suspense fallback={null}>
         <PageMockBanner ticker={ticker} cik={cik} includeBody={allowed} />
       </Suspense>
@@ -74,8 +74,8 @@ export default async function CompanyPage({ params }: { params: { ticker: string
           <Suspense fallback={<SectionSkeleton title="Financial statements" height="h-10" rows={9} />}>
             <FinancialsSection ticker={ticker} cik={cik} />
           </Suspense>
-          <Suspense fallback={<SectionSkeleton title="Consensus estimates" height="h-48" />}>
-            <EstimatesSection ticker={ticker} />
+          <Suspense fallback={<SectionSkeleton title="Analysis" height="h-64" />}>
+            <EstimatesSection ticker={ticker} price={core.quote?.price ?? null} />
           </Suspense>
           <Suspense fallback={<SectionSkeleton title="Ownership" height="h-10" rows={8} />}>
             <OwnershipSection ticker={ticker} />

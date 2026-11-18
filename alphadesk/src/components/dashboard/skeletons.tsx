@@ -20,13 +20,3 @@ export function CardSkeleton({ rows = 5, title = true }: { rows?: number; title?
   );
 }
 
-export function PortfolioSkeleton() {
-  return (
-    <div className="space-y-2" aria-busy="true" aria-label="Loading portfolios">
-      <Skeleton className="h-4 w-28" />
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-lg" />)}
-      </div>
-    </div>
-  );
-}

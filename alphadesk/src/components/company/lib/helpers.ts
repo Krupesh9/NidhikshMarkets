@@ -287,6 +287,39 @@ export function deriveValuation(input: {
   return { pe, peBasis, evEbitda, evBasis, ev };
 }
 
+export interface ForwardValuation { eps: number | null; pe: number | null; epsBasis: string; peBasis: string }
+
+/**
+ * Forward EPS / forward P/E. Forward EPS = explicit consensus for the next fiscal year-end when the provider has one,
+ * else price ÷ provider forward P/E. Forward P/E = live price ÷ forward EPS, else the provider-reported multiple.
+ */
+export function deriveForward(input: { price: number | null; forwardEps?: number | null; forwardPe?: number | null; basis?: string; label?: string }): ForwardValuation {
+  const { price } = input;
+  const label = input.label ?? 'Consensus';
+  const fEps = input.forwardEps ?? null;
+  const fPe = input.forwardPe && input.forwardPe > 0 ? input.forwardPe : null;
+  const basis = input.basis ? ` — ${input.basis}` : '';
+  if (fEps != null && fEps !== 0) {
+    const epsBasis = `${label}${basis}: forward EPS $${fEps.toFixed(2)}.`;
+    if (fEps < 0) return { eps: fEps, pe: null, epsBasis, peBasis: 'Not meaningful (negative forward EPS)' };
+    if (price) {
+      const pe = price / fEps;
+      return { eps: fEps, pe, epsBasis, peBasis: `Price $${price.toFixed(2)} ÷ forward EPS $${fEps.toFixed(2)} = ${pe.toFixed(1)}x (${label}${basis}).` };
+    }
+    return fPe ? { eps: fEps, pe: fPe, epsBasis, peBasis: `${label}: reported forward P/E ${fPe.toFixed(1)}x.` } : { eps: fEps, pe: null, epsBasis, peBasis: 'Price unavailable.' };
+  }
+  if (fPe) {
+    const eps = price ? price / fPe : null;
+    return {
+      eps, pe: fPe,
+      epsBasis: eps != null ? `Implied: price $${price!.toFixed(2)} ÷ reported forward P/E ${fPe.toFixed(1)}x = $${eps.toFixed(2)} (${label}).` : 'No explicit forward EPS estimate.',
+      peBasis: `${label}: reported forward P/E ${fPe.toFixed(1)}x.`,
+    };
+  }
+  const none = 'No forward EPS estimate available from the connected providers.';
+  return { eps: null, pe: null, epsBasis: none, peBasis: none };
+}
+
 export function compactUsd(n: number): string {
   const a = Math.abs(n);
   const s = a >= 1e12 ? `${(a / 1e12).toFixed(2)}T` : a >= 1e9 ? `${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);

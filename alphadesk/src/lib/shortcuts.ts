@@ -13,9 +13,8 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'go-dashboard', keys: ['G', 'D'], label: 'Go to Dashboard', group: 'Navigation' },
   { id: 'go-research', keys: ['G', 'R'], label: 'Go to Research', group: 'Navigation' },
   { id: 'go-screener', keys: ['G', 'S'], label: 'Go to Screener', group: 'Navigation' },
-  { id: 'go-portfolios', keys: ['G', 'P'], label: 'Go to Portfolios', group: 'Navigation' },
-  { id: 'go-baskets', keys: ['G', 'B'], label: 'Go to Baskets', group: 'Navigation' },
-  { id: 'go-shared', keys: ['G', 'H'], label: 'Go to Shared', group: 'Navigation' },
+  { id: 'go-watchlist', keys: ['G', 'W'], label: 'Go to Watchlist', group: 'Navigation' },
+  { id: 'go-calendar', keys: ['G', 'C'], label: 'Go to Calendar', group: 'Navigation' },
   { id: 'go-settings', keys: ['G', ','], label: 'Go to Settings', group: 'Navigation' },
 ];
 

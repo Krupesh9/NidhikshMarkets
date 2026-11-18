@@ -10,10 +10,10 @@ export function SectionCard({ id, title, description, isMock, providers, actions
 }) {
   return (
     <Card id={id} className={cn('scroll-mt-4 overflow-hidden', className)} aria-labelledby={id ? `${id}-title` : undefined}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
         <div className="min-w-0">
-          <h2 id={id ? `${id}-title` : undefined} className="text-sm font-semibold tracking-tight">{title}</h2>
-          {description && <p className="text-xs text-muted">{description}</p>}
+          <h2 id={id ? `${id}-title` : undefined} className="text-[15px] font-semibold tracking-tight">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {actions}
@@ -25,7 +25,7 @@ export function SectionCard({ id, title, description, isMock, providers, actions
           )}
         </div>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </Card>
   );
 }
@@ -33,11 +33,11 @@ export function SectionCard({ id, title, description, isMock, providers, actions
 export function SectionSkeleton({ title, height = 'h-64', rows = 0 }: { title: string; height?: string; rows?: number }) {
   return (
     <Card className="overflow-hidden" role="status" aria-label={`Loading ${title}`}>
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <span className="text-sm font-semibold text-muted">{title}</span>
         <Skeleton className="h-4 w-24" />
       </div>
-      <div className="space-y-2 p-4">
+      <div className="space-y-2 p-5">
         <Skeleton className={height} />
         {Array.from({ length: rows }).map((_, i) => <Skeleton key={i} className="h-7" />)}
       </div>

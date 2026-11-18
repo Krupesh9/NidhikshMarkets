@@ -5,6 +5,8 @@ import type {
 } from '../types';
 import { MOCK_BY_TICKER, MOCK_UNIVERSE, type MockCompany } from './universe';
 import { gaussian, pick, rng, round } from './prng';
+import { isIntradayRange } from '../types';
+import { synthIntraday } from '../intraday';
 import { FILING_EXCERPTS, NEWS_TEMPLATES, PUBLISHERS, SEGMENT_BY_SECTOR, TRANSCRIPT_LINES, fill } from './content';
 
 const DAY = 86_400_000;
@@ -86,7 +88,9 @@ export function mockFullHistory(ticker: string): Bar[] {
   return bars;
 }
 
+/** Slice daily bars to a range. Intraday ranges (1D/1W) cannot be served from daily bars and return []. */
 export function sliceRange(bars: Bar[], range: HistoryRange): Bar[] {
+  if (isIntradayRange(range)) return [];
   if (!bars.length) return bars;
   const last = new Date(bars[bars.length - 1].date + 'T00:00:00Z');
   let from: Date;
@@ -239,12 +243,17 @@ function mockEstimates(ticker: string): Estimates | null {
     periods.push(mkP(`FY${fy + k}`, 'ebitda', (m.revB * 1e9 * g * m.netMargin) / 100 * 1.6));
   }
   void sharesOut;
+  const fwd = periods.find((p) => p.metric === 'eps' && p.period === `FY${fy + 1}`);
   const buy = 10 + Math.floor(r() * 30);
   return {
     ticker: m.ticker,
     rating: { buy, hold: 3 + Math.floor(r() * 12), sell: Math.floor(r() * 4) },
     priceTarget: { mean: round(m.price * (1.05 + r() * 0.2)), high: round(m.price * (1.3 + r() * 0.3)), low: round(m.price * (0.7 + r() * 0.15)) },
     periods,
+    forwardEps: fwd?.consensus,
+    forwardPe: fwd && fwd.consensus > 0 ? round(m.price / fwd.consensus, 1) : undefined,
+    trailingEps: round(eps0, 2),
+    forwardBasis: `next fiscal year FY${fy + 1} consensus EPS (simulated)`,
   };
 }
 
@@ -435,6 +444,10 @@ export class MockProvider implements MarketDataProvider {
     return wrap(ts.map(mockQuote).filter((q): q is Quote => !!q));
   }
   async getHistory(t: string, range: HistoryRange) {
+    if (isIntradayRange(range)) {
+      const bars = synthIntraday(mockFullHistory(t), range, rng('intraday', norm(t), dayKey()));
+      return wrap(bars, [{ id: `mock:price:${norm(t)}:${range}`, name: `${norm(t)} simulated ${range === '1D' ? '5-minute' : '30-minute'} bars`, kind: 'price' }]);
+    }
     return wrap(sliceRange(mockFullHistory(t), range), [{ id: `mock:price:${norm(t)}`, name: `${norm(t)} simulated daily bars`, kind: 'price' }]);
   }
   async getProfile(t: string): Promise<WithMeta<Profile | null>> {

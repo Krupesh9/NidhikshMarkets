@@ -1,5 +1,7 @@
 import 'server-only';
-import type { Filing, PartialProvider, WithMeta } from './types';
+import type { Filing, FinancialPeriod, Financials, PartialProvider, SourceRef, WithMeta } from './types';
+import { factMapFromCompanyFacts, mapSecFinancials, secFilingUrl, type FactMap, type XbrlFact } from './secFinancials';
+import { getNidhikshSecFundamentals } from './nidhiksh';
 import { cache } from '../cache';
 import { log } from '../log';
 
@@ -55,10 +57,51 @@ export async function secCompanyFacts(ticker: string): Promise<unknown | null> {
   return cache.wrap(`sec:facts:${cik}`, () => secJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`), DAY_MS);
 }
 
+interface SecFin { annual: Financials | null; quarterly: Financials | null; cik: string | null; origin: 'live' | 'cache'; asOf: string }
+
+/** Both statement sets mapped from XBRL facts. Live companyfacts (24h cache, mapped result only), else the Nidhiksh cache. */
+async function secFinancials(ticker: string): Promise<SecFin | null> {
+  const T = ticker.toUpperCase();
+  if (secEnabled()) {
+    try {
+      const live = await cache.wrap(`sec:fin:${T}`, async () => {
+        const cik = await secCikFor(T);
+        if (!cik) return null;
+        const facts = factMapFromCompanyFacts(await secJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`));
+        return { annual: mapSecFinancials(T, facts, 'annual'), quarterly: mapSecFinancials(T, facts, 'quarterly'), cik, origin: 'live' as const, asOf: new Date().toISOString() };
+      }, DAY_MS);
+      if (live && (live.annual || live.quarterly)) return live;
+    } catch (e) {
+      log.debug('sec.financials_failed', { ticker: T, err: (e as Error).message });
+    }
+  }
+  const local = getNidhikshSecFundamentals(T);
+  if (!local) return null;
+  const facts: FactMap = {};
+  for (const [tag, list] of Object.entries(local.financial_history)) facts[tag] = list as XbrlFact[];
+  for (const [tag, f] of Object.entries(local.facts)) if (f && typeof f === 'object') (facts[tag] ??= []).push(f as XbrlFact);
+  const cik = local.cik ?? null;
+  return { annual: mapSecFinancials(T, facts, 'annual'), quarterly: mapSecFinancials(T, facts, 'quarterly'), cik, origin: 'cache', asOf: local.available_at };
+}
+
 const FORMS = new Set(['10-K', '10-Q', '8-K', 'DEF 14A', 'S-1', '20-F', '6-K', '10-K/A', '10-Q/A']);
 
 export const secProvider: PartialProvider = {
   name: NAME,
+
+  async getFinancials(ticker: string, period: FinancialPeriod): Promise<WithMeta<Financials | null>> {
+    const f = await secFinancials(ticker);
+    const data = f ? (period === 'annual' ? f.annual : f.quarterly) : null;
+    const last = data?.rows.at(-1);
+    const accn = last?.sourceId?.replace(/^sec:/, '');
+    const src: SourceRef[] = last && accn ? [{
+      id: last.sourceId!, name: `${data!.ticker} ${period === 'annual' ? '10-K' : '10-Q/10-K'} XBRL financial data (SEC EDGAR${f!.origin === 'cache' ? ', via Nidhiksh cache' : ''})`,
+      url: f!.cik ? secFilingUrl(f!.cik, accn) : undefined, kind: 'filing',
+      excerpt: `${data!.rows.length} ${period} periods mapped from us-gaap XBRL facts; latest period ended ${last.periodEnd} (accession ${accn}).`,
+      locator: 'XBRL companyfacts',
+    }] : [];
+    return { data, meta: { source: src, isMock: false, asOf: f?.asOf ?? new Date().toISOString(), provider: f?.origin === 'cache' ? 'SEC EDGAR (Nidhiksh cache)' : NAME } };
+  },
   async getFilings(ticker: string): Promise<WithMeta<Filing[]>> {
     const T = ticker.toUpperCase();
     const empty = { data: [] as Filing[], meta: { source: [], isMock: false, asOf: new Date().toISOString(), provider: NAME } };

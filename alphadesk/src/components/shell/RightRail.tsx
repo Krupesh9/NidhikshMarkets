@@ -57,7 +57,7 @@ export function RightRail() {
         aria-label={state.title}
         className={cn('fixed inset-y-0 right-0 z-40 flex w-[min(380px,100vw)] flex-col border-l border-border bg-panel shadow-2xl xl:sticky xl:top-0 xl:z-0 xl:h-screen xl:w-[340px] xl:shrink-0 xl:shadow-none')}
       >
-        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+        <div className="flex h-16 items-center justify-between border-b border-border px-5">
           <h2 className="text-sm font-semibold">{state.title}</h2>
           <button onClick={close} className="rounded p-1 text-muted hover:bg-panel-2 hover:text-text" aria-label="Close context panel">
             <X className="h-4 w-4" />

@@ -6,9 +6,9 @@ import { downsampleBars } from '@/components/company/lib/helpers';
 
 export const dynamic = 'force-dynamic';
 
-const RANGES = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', 'MAX'] as const;
+const RANGES = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'MAX'] as const;
 
-/** GET /api/company/:ticker/history?range=1Y[&maxPoints=1200] → { ticker, range, bars, downsampled, meta } */
+/** GET /api/company/:ticker/history?range=1D|1W|1M|…|MAX[&maxPoints=1200] → { ticker, range, bars, downsampled, meta }. 1D/1W bars carry ISO timestamps. */
 export const GET = withApi(
   async ({ params, query }) => {
     const ticker = sanitizeTicker(params.ticker);

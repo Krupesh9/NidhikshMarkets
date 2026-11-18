@@ -1,9 +1,12 @@
 import 'server-only';
-import type { MarketDataProvider, PartialProvider, Quote, WithMeta } from './types';
+import type { HistoryRange, MarketDataProvider, PartialProvider, Quote, WithMeta } from './types';
+import { isIntradayRange } from './types';
 import { mockProvider } from './mock';
+import { alpacaEnabled, alpacaProvider, alpacaQuoteMeta } from './alpaca';
+import { alphaVantageEnabled, alphaVantageProvider } from './alphavantage';
 import { massiveEnabled, massiveProvider } from './massive';
 import { nidhikshProvider } from './nidhiksh';
-import { secEnabled, secProvider } from './sec';
+import { secProvider } from './sec';
 import { cache } from '../cache';
 import { log } from '../log';
 
@@ -19,9 +22,13 @@ function hasData(v: unknown): boolean {
 function chain(): PartialProvider[] {
   if (process.env.ALPHADESK_FORCE_MOCK === '1') return [mockProvider];
   const out: PartialProvider[] = [];
+  // Alpaca first: it serves quotes + history (incl. intraday) on the free plan; Massive's free tier 403s/429s those.
+  if (alpacaEnabled()) out.push(alpacaProvider);
   if (massiveEnabled()) out.push(massiveProvider);
   out.push(nidhikshProvider);
-  if (secEnabled()) out.push(secProvider);
+  // Always present: getFilings is a no-op when SEC is off, and getFinancials then falls back to the Nidhiksh SEC cache.
+  out.push(secProvider);
+  if (alphaVantageEnabled()) out.push(alphaVantageProvider);
   out.push(mockProvider);
   return out;
 }
@@ -32,10 +39,16 @@ const TTL: Partial<Record<Method, number>> = {
   getHistory: 10 * 60_000, getFilings: 60 * 60_000, getProfile: 60 * 60_000, getFinancials: 60 * 60_000,
 };
 
+function ttlFor(method: Method, args: unknown[]): number {
+  if (method === 'getHistory' && isIntradayRange(args[1] as HistoryRange)) return 60_000;
+  return TTL[method] ?? 5 * 60_000;
+}
+const cacheKey = (method: Method, args: unknown[]) => `md:${method}:${JSON.stringify(args)}`;
+
 const NULLABLE = new Set<Method>(['getQuote', 'getProfile', 'getFinancials', 'getEstimates']);
 
 async function first<T>(method: Method, args: unknown[]): Promise<WithMeta<T>> {
-  const key = `md:${method}:${JSON.stringify(args)}`;
+  const key = cacheKey(method, args);
   return cache.wrap(
     key,
     async () => {
@@ -52,7 +65,7 @@ async function first<T>(method: Method, args: unknown[]): Promise<WithMeta<T>> {
       // never throw to the UI: return an empty, mock-labelled result
       return { data: (NULLABLE.has(method) ? null : []) as T, meta: { source: [], isMock: true, asOf: new Date().toISOString(), provider: 'none' } };
     },
-    TTL[method] ?? 5 * 60_000,
+    ttlFor(method, args),
   );
 }
 
@@ -63,6 +76,18 @@ class CompositeProvider implements MarketDataProvider {
   /** Per-ticker fall-through: each ticker is served by the first provider that has it. */
   async getQuotes(ts: string[]): Promise<WithMeta<Quote[]>> {
     const tickers = Array.from(new Set(ts.map((t) => t.toUpperCase())));
+    // One batched Alpaca snapshot call for every uncached ticker (instead of N single calls); per-ticker fall-through below.
+    if (alpacaEnabled() && process.env.ALPHADESK_FORCE_MOCK !== '1') {
+      const missing = tickers.filter((t) => cache.get(cacheKey('getQuote', [t])) === undefined);
+      if (missing.length > 1) {
+        try {
+          const r = await alpacaProvider.getQuotes!(missing);
+          for (const q of r.data) cache.set(cacheKey('getQuote', [q.ticker]), { data: q, meta: alpacaQuoteMeta(q) }, ttlFor('getQuote', []));
+        } catch (e) {
+          log.debug('marketdata.batch_quotes_failed', { err: (e as Error).message });
+        }
+      }
+    }
     const results = await Promise.all(tickers.map((t) => this.getQuote(t)));
     const data = results.map((r) => r.data).filter((q): q is Quote => !!q);
     const isMock = results.some((r) => r.data && r.meta.isMock);

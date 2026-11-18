@@ -14,7 +14,7 @@ export function MockBanner({ isMock = true, provider, className, children }: { i
       <span>
         {children ?? (
           <>
-            <strong className="font-semibold">Demo data.</strong> Some figures on this screen are simulated{provider && provider !== 'Mock' ? ` (mixed with ${provider})` : ''}. Add a Massive (Polygon) key in Settings for live data. Research only — not investment advice.
+            <strong className="font-semibold">Demo data.</strong> Some figures on this screen are simulated{provider && provider !== 'Mock' ? ` (mixed with ${provider})` : ''}. Connect an Alpaca or Massive (Polygon) key for live prices. Research only — not investment advice.
           </>
         )}
       </span>

@@ -54,7 +54,7 @@ export function MockIndicator() {
 export function Topbar({ onSearch, onChat, onShortcuts }: { onSearch: () => void; onChat: () => void; onShortcuts: () => void }) {
   const { user } = useCurrentUser();
   return (
-    <header className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-border bg-bg/90 px-3 backdrop-blur md:px-4">
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-bg/80 px-4 backdrop-blur-md md:px-8">
       <Link href="/dashboard" className="md:hidden" aria-label="NidhikshDesk home"><Logo size={24} showName={false} /></Link>
       <button
         onClick={onSearch}

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { Sparkles, SlidersHorizontal, Upload } from 'lucide-react';
+import { Sparkles, SlidersHorizontal, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { useShell } from '@/components/shell/AppShell';
@@ -17,7 +17,7 @@ export function QuickActions() {
         <Sparkles aria-hidden /> Ask AI <Kbd className="ml-1 hidden sm:inline-flex">⌘J</Kbd>
       </Button>
       <Button asChild size="sm" variant="secondary"><Link href="/screener"><SlidersHorizontal aria-hidden /> New screen</Link></Button>
-      <Button asChild size="sm" variant="secondary"><Link href="/portfolios?import=1"><Upload aria-hidden /> Import portfolio</Link></Button>
+      <Button asChild size="sm" variant="secondary"><Link href="/watchlist"><Star aria-hidden /> Watchlist</Link></Button>
     </div>
   );
 }

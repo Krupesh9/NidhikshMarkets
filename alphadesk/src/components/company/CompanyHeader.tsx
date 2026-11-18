@@ -1,9 +1,10 @@
 import { Delta } from '@/components/ui/delta';
 import { fmt } from '@/lib/utils';
 import type { CoreData } from './server/data';
-import { monogram, rangePosition } from './lib/helpers';
+import { rangePosition } from './lib/helpers';
 import { MetricButton } from './MetricButton';
 import { HeaderActions } from './HeaderActions';
+import { CompanyLogo } from '@/components/ui/company-logo';
 
 function KeyStat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -16,15 +17,13 @@ function KeyStat({ label, children }: { label: string; children: React.ReactNode
 
 /** Deep-dive header: monogram, identity, price + change, key multiples, 52-week range, actions. */
 export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: boolean }) {
-  const { profile, quote, ticker, sources, valuation, week52 } = core;
+  const { profile, quote, ticker, sources, valuation, forward, week52 } = core;
   const name = profile?.name ?? ticker;
   const pos = quote && week52.high && week52.low ? rangePosition(quote.price, week52.low, week52.high) : null;
   return (
     <header className="rounded-lg border border-border bg-panel p-4" aria-label={`${ticker} overview`}>
       <div className="flex flex-wrap items-start gap-4">
-        <div aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-accent/40 bg-accent/10 font-mono text-base font-bold text-accent">
-          {monogram(profile?.name, ticker)}
-        </div>
+        <CompanyLogo ticker={ticker} size={52} className="rounded-xl" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <h1 className="font-mono text-xl font-bold tracking-tight">{ticker}</h1>
@@ -63,6 +62,12 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
           </KeyStat>
           <KeyStat label="P/E (TTM)">
             <MetricButton source={sources.pe} highlight={valuation.pe ? `${valuation.pe.toFixed(1)}x` : undefined} label="P/E">{fmt.multiple(valuation.pe)}</MetricButton>
+          </KeyStat>
+          <KeyStat label="Fwd EPS">
+            <MetricButton source={sources.fwdEps} highlight={forward.eps != null ? `$${forward.eps.toFixed(2)}` : undefined} label="Forward EPS">{forward.eps != null ? `$${forward.eps.toFixed(2)}` : '—'}</MetricButton>
+          </KeyStat>
+          <KeyStat label="Fwd P/E">
+            <MetricButton source={sources.fwdPe} highlight={forward.pe ? `${forward.pe.toFixed(1)}x` : undefined} label="Forward P/E">{fmt.multiple(forward.pe)}</MetricButton>
           </KeyStat>
           <KeyStat label="EV/EBITDA">
             <MetricButton source={sources.evEbitda} highlight={valuation.evEbitda ? `${valuation.evEbitda.toFixed(1)}x` : undefined} label="EV/EBITDA">{fmt.multiple(valuation.evEbitda)}</MetricButton>

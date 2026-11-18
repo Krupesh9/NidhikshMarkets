@@ -2,6 +2,8 @@ import 'server-only';
 import type {
   Bar, FinancialPeriod, Financials, FinancialStatementRow, GicsSector, HistoryRange, NewsItem, PartialProvider, Profile, Quote, SourceRef, WithMeta,
 } from './types';
+import { isIntradayRange } from './types';
+import { intradaySpec, intradayStart, isoMinute, lastSessions } from './intraday';
 import { MOCK_BY_TICKER } from './mock/universe';
 import { log } from '../log';
 
@@ -23,9 +25,16 @@ export function massiveEnabled(): boolean {
 
 let preferredHost = 0;
 
+/** Endpoint families the current plan rejects (403, or 404 on /vX) are skipped for 6h so they don't burn the 5/min quota. */
+const blocked = new Map<string, number>();
+const family = (path: string) => path.split('?')[0].split('/').slice(0, 4).join('/');
+const BLOCK_MS = 6 * 3600_000;
+
 async function get<T>(path: string): Promise<T> {
   const key = massiveKey();
   if (!key) throw new Error('massive: not configured');
+  const fam = family(path);
+  if ((blocked.get(fam) ?? 0) > Date.now()) throw new Error(`massive: ${fam} not available on this plan`);
   let lastErr: unknown;
   for (let i = 0; i < HOSTS.length; i++) {
     const hostIdx = (preferredHost + i) % HOSTS.length;
@@ -40,11 +49,13 @@ async function get<T>(path: string): Promise<T> {
         lastErr = new Error(`massive: HTTP ${res.status} from ${new URL(host).host}`);
         continue;
       }
+      if (res.status === 403 || (res.status === 404 && path.startsWith('/vX/'))) blocked.set(fam, Date.now() + BLOCK_MS);
       if (!res.ok) throw new Error(`massive: HTTP ${res.status} for ${path.split('?')[0]}`);
       preferredHost = hostIdx;
       return (await res.json()) as T;
     } catch (e) {
       lastErr = e;
+      if ((blocked.get(fam) ?? 0) > Date.now()) break; // plan restriction: the other host will say the same
       log.debug('massive.host_failed', { host: new URL(host).host, path: path.split('?')[0], err: (e as Error).message });
     }
   }
@@ -111,7 +122,14 @@ export const massiveProvider: PartialProvider = {
 
   async getHistory(t: string, range: HistoryRange): Promise<WithMeta<Bar[]>> {
     const T = t.toUpperCase();
-    const j = await get<{ results?: { t: number; o: number; h: number; l: number; c: number; v: number }[] }>(
+    type Agg = { results?: { t: number; o: number; h: number; l: number; c: number; v: number }[] };
+    if (isIntradayRange(range)) {
+      const spec = intradaySpec(range);
+      const j = await get<Agg>(`/v2/aggs/ticker/${encodeURIComponent(T)}/range/${spec.minutes}/minute/${intradayStart(range).getTime()}/${Date.now()}?adjusted=true&sort=asc&limit=50000`);
+      const data = lastSessions((j.results ?? []).map((r) => ({ date: isoMinute(r.t), open: r.o, high: r.h, low: r.l, close: r.c, volume: r.v })), spec.sessions);
+      return { data, meta: meta([src(`massive:aggs:${T}:${range}`, `${T} ${spec.minutes}-minute aggregates (Massive)`)]) };
+    }
+    const j = await get<Agg>(
       `/v2/aggs/ticker/${encodeURIComponent(T)}/range/1/day/${rangeFrom(range)}/${ymd(new Date())}?adjusted=true&sort=asc&limit=50000`,
     );
     const data = (j.results ?? []).map((r) => ({ date: ymd(new Date(r.t)), open: r.o, high: r.h, low: r.l, close: r.c, volume: r.v }));

@@ -1,0 +1,159 @@
+'use client';
+import * as React from 'react';
+import { Users } from 'lucide-react';
+import type { Estimates } from '@/lib/data/types';
+import { cn, fmt } from '@/lib/utils';
+
+const RATING = {
+  buy: { label: 'Buy', color: 'rgb(var(--up))', chip: 'bg-up/15 text-up' },
+  hold: { label: 'Hold', color: 'rgb(var(--warn))', chip: 'bg-warn/15 text-warn' },
+  sell: { label: 'Sell', color: 'rgb(var(--down))', chip: 'bg-down/15 text-down' },
+} as const;
+type Key = keyof typeof RATING;
+
+const ACTION_LABEL: Record<NonNullable<Estimates['analystActions']>[number]['action'], string> = {
+  upgraded: 'Upgraded', downgraded: 'Downgraded', maintained: 'Maintained', initiated: 'Initiated', reiterated: 'Reiterated', 'target-raised': 'Target raised', 'target-lowered': 'Target lowered',
+};
+
+function NeedsFeed({ what }: { what: string }) {
+  return (
+    <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 text-center">
+      <Users className="h-5 w-5 text-muted" aria-hidden />
+      <p className="text-sm font-medium">{what} not available yet</p>
+      <p className="max-w-sm text-xs text-muted">Connect an analyst-ratings feed — the Benzinga add-on on your Massive plan, or an <code className="font-mono">FMP_API_KEY</code> — to see this like Google Finance.</p>
+    </div>
+  );
+}
+
+/** Donut with Buy / Hold / Sell counts and the consensus label. */
+function RatingsCard({ e, ticker }: { e: Estimates; ticker: string }) {
+  const { buy, hold, sell } = e.rating;
+  const total = buy + hold + sell;
+  const r = 52, c = 2 * Math.PI * r, gap = total > 1 ? 4 : 0;
+  let offset = 0;
+  const parts = (['buy', 'hold', 'sell'] as Key[]).map((k) => ({ k, n: e.rating[k] })).filter((p) => p.n > 0);
+  const consensus: Key = buy >= hold && buy >= sell ? 'buy' : sell > hold ? 'sell' : 'hold';
+  return (
+    <section className="rounded-xl border border-border bg-panel-2/40 p-5" aria-labelledby="ar-h">
+      <h3 id="ar-h" className="text-[15px] font-semibold">Analyst ratings</h3>
+      {total === 0 ? <div className="mt-4"><NeedsFeed what="Buy / hold / sell ratings" /></div> : (
+        <>
+          <p className="mt-1 text-xs text-muted">Based on {total} analysts rating {ticker}.</p>
+          <div className="mt-5 flex flex-wrap items-center gap-8">
+            <figure className="flex flex-col items-center gap-2">
+              <svg width={132} height={132} viewBox="0 0 132 132" role="img" aria-label={`${buy} buy, ${hold} hold, ${sell} sell`}>
+                <g transform="rotate(-90 66 66)">
+                  {parts.map((p) => {
+                    const len = (p.n / total) * c - gap;
+                    const el = <circle key={p.k} cx={66} cy={66} r={r} fill="none" stroke={RATING[p.k].color} strokeWidth={14} strokeLinecap="round"
+                      strokeDasharray={`${Math.max(len, 0.1)} ${c}`} strokeDashoffset={-offset} className="transition-[stroke-dasharray] duration-700 ease-out" />;
+                    offset += (p.n / total) * c;
+                    return el;
+                  })}
+                </g>
+              </svg>
+              <figcaption className="text-base font-semibold" style={{ color: RATING[consensus].color }}>{RATING[consensus].label}</figcaption>
+            </figure>
+            <dl className="min-w-[140px] flex-1 space-y-3 text-sm">
+              {(['buy', 'hold', 'sell'] as Key[]).map((k) => (
+                <div key={k} className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-sm" style={{ background: RATING[k].color }} aria-hidden />
+                  <dt className="flex-1">{RATING[k].label}</dt>
+                  <dd className="font-mono tabular-nums">{e.rating[k]}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Highest / average / lowest 12-month targets as bars, with the current price marked. */
+function ForecastCard({ e, ticker, price }: { e: Estimates; ticker: string; price: number | null }) {
+  const { high, mean, low } = e.priceTarget;
+  const rows = [{ k: 'Highest', v: high }, { k: 'Average', v: mean }, { k: 'Lowest', v: low }].filter((x) => x.v > 0);
+  const max = Math.max(...rows.map((x) => x.v), price ?? 0) * 1.05;
+  const pct = (v: number) => (price ? ((v - price) / price) * 100 : null);
+  return (
+    <section className="rounded-xl border border-border bg-panel-2/40 p-5" aria-labelledby="fc-h">
+      <h3 id="fc-h" className="text-[15px] font-semibold">12-month forecast</h3>
+      {!rows.length ? <div className="mt-4"><NeedsFeed what="Price targets" /></div> : (
+        <>
+          <p className="mt-1 text-xs text-muted">Analyst 12-month price targets for {ticker}{rows.length < 3 ? ' (high/low need a ratings feed)' : ''}.</p>
+          <div className="relative mt-6 space-y-3">
+            {price != null && (
+              <div className="pointer-events-none absolute inset-y-0 left-[84px] right-0" aria-hidden>
+                <span className="absolute -bottom-7 -top-2 border-l border-dashed border-text/50" style={{ left: `${(price / max) * 100}%` }} />
+              </div>
+            )}
+            {rows.map((x) => {
+              const d = pct(x.v);
+              return (
+                <div key={x.k} className="flex items-center gap-3">
+                  <span className="w-[72px] text-sm text-muted">{x.k}</span>
+                  <div className="relative h-8 flex-1">
+                    <div className="flex h-full items-center justify-end rounded-md bg-info/80 px-3 font-mono text-xs font-semibold tabular-nums text-white transition-[width] duration-700 ease-out" style={{ width: `${(x.v / max) * 100}%` }}>
+                      <span className="whitespace-nowrap">${fmt.price(x.v)}{d != null && <span className="ml-1 font-normal opacity-90">({d >= 0 ? '+' : ''}{d.toFixed(1)}%)</span>}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {price != null && (
+              <div className="relative ml-[84px] h-6">
+                <span className="absolute top-1 -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-panel px-2.5 py-0.5 font-mono text-[11px] tabular-nums" style={{ left: `${(price / max) * 100}%` }}>Current ${fmt.price(price)}</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ActionsTable({ e, price }: { e: Estimates; price: number | null }) {
+  const rows = e.analystActions ?? [];
+  if (!rows.length) return <NeedsFeed what="Analyst-by-analyst actions" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <caption className="sr-only">Recent analyst rating actions</caption>
+        <thead className="text-left text-xs text-muted">
+          <tr className="border-b border-border">
+            {['Analyst', 'Recommendation', 'Action', 'Price target', 'Projected', 'Date'].map((h, i) => <th key={h} scope="col" className={cn('px-3 py-2.5 font-medium', i >= 3 && i <= 4 && 'text-right')}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 20).map((a, i) => {
+            const d = a.priceTarget && price ? ((a.priceTarget - price) / price) * 100 : null;
+            return (
+              <tr key={`${a.firm}-${a.date}-${i}`} className="border-b border-border/60 transition-colors hover:bg-panel-2/50">
+                <td className="px-3 py-3"><div className="font-medium">{a.analyst ?? a.firm}</div>{a.analyst && <div className="text-xs text-muted">{a.firm}</div>}</td>
+                <td className="px-3 py-3"><span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', RATING[a.rating].chip)} title={a.ratingLabel}>{a.ratingLabel ?? RATING[a.rating].label}</span></td>
+                <td className="px-3 py-3 text-muted">{ACTION_LABEL[a.action]}</td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums">{a.priceTarget ? `$${fmt.price(a.priceTarget)}` : '–'}</td>
+                <td className={cn('px-3 py-3 text-right font-mono tabular-nums', d == null ? 'text-muted' : d >= 0 ? 'text-up' : 'text-down')}>{d == null ? '–' : `${d >= 0 ? '+' : ''}${d.toFixed(1)}%`}</td>
+                <td className="px-3 py-3 font-mono text-xs tabular-nums text-muted">{fmt.date(a.date)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Google-Finance-style analysis block: ratings donut, 12-month forecast, analyst actions. */
+export function AnalystOverview({ ticker, estimates, price }: { ticker: string; estimates: Estimates; price: number | null }) {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <RatingsCard e={estimates} ticker={ticker} />
+        <ForecastCard e={estimates} ticker={ticker} price={price} />
+      </div>
+      <ActionsTable e={estimates} price={price} />
+    </div>
+  );
+}

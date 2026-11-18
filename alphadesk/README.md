@@ -73,7 +73,11 @@ Every provider key is optional. If a key is missing, the app uses local or mock 
 | `ENCRYPTION_KEY` | **yes** | 32-byte base64 key for AES-256-GCM encryption of user-supplied API keys. |
 | `MASSIVE_API_KEY` | no | Massive (formerly Polygon.io) REST key. Tries `api.massive.com` first, then `api.polygon.io`. Sent as a Bearer header, never in a URL. |
 | `POLYGON_API_KEY` | no | Legacy alias for `MASSIVE_API_KEY`. `MASSIVE_API_KEY` wins if both are set. |
-| `SEC_USER_AGENT` | no | Enables live SEC EDGAR (filings, company facts). SEC fair-access policy requires a contact string such as `"NidhikshDesk research you@example.com"`. |
+| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | no | Alpaca **market data** (quotes, daily + intraday bars). Data API only (`data.alpaca.markets`); no trading endpoints are called. Sent as `APCA-API-*` headers. |
+| `ALPACA_FEED` | no | Bars feed: `sip` (default; request end held 16 min back, as the free plan requires) or `iex`. Quote snapshots always use IEX (the free plan rejects recent SIP snapshots). |
+| `ALPACA_ENDPOINT` | no | Trading/paper API base, kept for parity with Nidhiksh Markets. Not used by NidhikshDesk. |
+| `ALPHA_VANTAGE_API_KEY` | no | Analyst consensus (`EARNINGS_ESTIMATES`) → Fwd EPS / Fwd P/E and the estimates panel. Free tier is 25 calls/day, 1/s: responses are cached 24h in memory and in `.cache/alphavantage.json` (git-ignored). `OVERVIEW` (ratings, target, ForwardPE) is premium-only and skipped once refused. |
+| `SEC_USER_AGENT` | no | Enables live SEC EDGAR (filings, XBRL company facts → financial statements). SEC fair-access policy requires a contact string such as `"NidhikshDesk research you@example.com"`. |
 | `NIDHIKSH_DB_PATH` | no | Path to the Nidhiksh Markets local cache (`runtime/market.sqlite`). Opened **read-only**. Skipped if the file doesn't exist. |
 | `ALPHADESK_FORCE_MOCK` | no | `1` skips every real provider and serves only the mock universe. Used for demos, tests and CI. |
 | `ANTHROPIC_API_KEY` | no | Claude provider for AI research. |
@@ -93,17 +97,23 @@ synthesis and citations.
 All market data goes through one server-side entry point, `getMarketData()` in `src/lib/data`. Each call tries the
 providers below in order, and the first one that returns non-empty data wins:
 
-1. **Massive (Polygon)**: when `MASSIVE_API_KEY`/`POLYGON_API_KEY` is set.
-2. **Nidhiksh local cache**: read-only `better-sqlite3` on `NIDHIKSH_DB_PATH` (daily split-adjusted bars, SEC
-   fundamentals, news, filings).
-3. **SEC EDGAR**: live filings and company facts when `SEC_USER_AGENT` is set.
-4. **Mock**: a deterministic, seeded 50-stock universe across all 11 GICS sectors.
+1. **Alpaca**: quotes and history (daily, plus `1D` 5-minute and `1W` 30-minute intraday bars) when the Alpaca keys are set.
+2. **Massive (Polygon)**: when `MASSIVE_API_KEY`/`POLYGON_API_KEY` is set. Endpoints the plan refuses (403, or 404 on
+   `/vX`) are skipped for 6h so they don't use up the 5 calls/min quota.
+3. **Nidhiksh local cache**: read-only `better-sqlite3` on `NIDHIKSH_DB_PATH` (daily split-adjusted bars, SEC
+   fundamentals, news, filings). It has no intraday bars.
+4. **SEC EDGAR**: live filings, and financial statements mapped from XBRL company facts (falls back to the SEC facts in
+   the Nidhiksh cache) when `SEC_USER_AGENT` is set.
+5. **Alpha Vantage**: consensus estimates when `ALPHA_VANTAGE_API_KEY` is set.
+6. **Mock**: a deterministic, seeded 50-stock universe across all 11 GICS sectors. It also synthesises intraday bars.
 
 A provider that throws or returns empty data is skipped. The UI never sees an exception. If nothing has data, the
 result is `null`/`[]`, marked `isMock: true, provider: 'none'`. Every result has the shape
 `{ data, meta: { source[], isMock, asOf, provider } }`.
 
-**Mock labelling:** any screen whose data has `meta.isMock` shows `<MockBanner/>`. The topbar indicator shows the
+**Mock labelling:** any screen whose data has `meta.isMock` shows `<MockBanner/>`. On company pages the banner only
+considers header data (quote, 1Y history, profile, financials). Sections that are still simulated (for example insiders
+or 13F) show their own "Demo" badge instead. The topbar indicator shows the
 active mode: *Mock data*, *Mixed: local + mock* or *Live data*. Mock sources have ids like `mock:filing:NVDA:10-K:2025`
 and are named "(simulated)".
 
@@ -168,6 +178,12 @@ flowchart LR
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for layers, interfaces and security.
 
 ---
+
+## News headlines and calendar
+
+**Headlines** (`src/lib/news`, `GET /api/news?tickers=&sources=&limit=&watchlist=1&only=1`): headline + link + publisher + time + short summary from public, free channels only (no article scraping, no paywall bypass). Official RSS: CNBC, WSJ and MarketWatch (Dow Jones public feeds), NYT, FT, Seeking Alpha, Nasdaq, Benzinga, Investing.com, Yahoo Finance per-ticker. Reuters, Bloomberg, Zacks, Morningstar and general Yahoo Finance have no working public RSS, so they come from Google News RSS searches restricted to the publisher's site (links go through news.google.com). Massive provider news is merged for ticker relevance. Items are de-duplicated by normalised title, sorted newest first and tagged with matching tickers. Each feed times out after 6s and is cached for 5 minutes in memory. The registry with per-source notes is `NEWS_SOURCES` in `src/lib/news/sources.ts`.
+
+**Calendar** (`/calendar`, `GET /api/calendar?from=&to=&types=&scope=watchlist|all`): macro release dates come from the FRED release-dates API (`FRED_API_KEY`, cached 12h). FOMC decisions and minutes (minutes = decision + 21 days) and NYSE holidays are hardcoded from federalreserve.gov and nyse.com in `src/lib/calendar/fomc.ts` and `holidays.ts`, so update them yearly. Earnings come from Alpha Vantage `EARNINGS_CALENDAR` (`ALPHA_VANTAGE_API_KEY`). One call returns three months of data. It is cached for 24h in memory and in `.cache/av-earnings-calendar.json` (gitignored), with a stale-cache fallback. Watchlist names missing from that file fall back to provider catalysts, labelled "Estimated".
 
 ## Scripts
 

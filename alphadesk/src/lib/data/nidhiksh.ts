@@ -63,6 +63,7 @@ export const nidhikshProvider: PartialProvider = {
   name: NAME,
 
   async getHistory(ticker: string, range: HistoryRange): Promise<WithMeta<Bar[]>> {
+    // the cache only holds daily bars: sliceRange returns [] for intraday (1D/1W) so the chain falls through
     const b = sliceRange(bars(ticker), range);
     return {
       data: b,
@@ -143,7 +144,7 @@ export const nidhikshProvider: PartialProvider = {
 };
 
 /** Raw SEC fundamentals payload ({facts, financial_history}) from the local cache, for AI/fundamentals features. */
-export function getNidhikshSecFundamentals(ticker: string): { facts: Record<string, unknown>; financial_history: Record<string, unknown[]>; available_at: string } | null {
+export function getNidhikshSecFundamentals(ticker: string): { facts: Record<string, unknown>; financial_history: Record<string, unknown[]>; available_at: string; cik?: string } | null {
   const d = open();
   const id = instrumentId(ticker);
   if (!d || id == null) return null;
@@ -153,7 +154,7 @@ export function getNidhikshSecFundamentals(ticker: string): { facts: Record<stri
   if (!row) return null;
   try {
     const p = JSON.parse(row.payload);
-    return { facts: p.facts ?? {}, financial_history: p.financial_history ?? {}, available_at: row.available_at };
+    return { facts: p.facts ?? {}, financial_history: p.financial_history ?? {}, available_at: row.available_at, cik: p.cik != null ? String(p.cik) : undefined };
   } catch {
     return null;
   }

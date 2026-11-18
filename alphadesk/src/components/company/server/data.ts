@@ -4,7 +4,7 @@ import type {
   Bar, Catalyst, DataMeta, Estimates, Filing, Financials, InsiderTxn, InstitutionalHolding, NewsItem, Profile, Quote, SourceRef,
 } from '@/lib/data/types';
 import {
-  deriveValuation, filingsToEvents, insidersToEvents, mergeEvents, newsToEvents, periodSource, type ChartEvent, type Valuation,
+  deriveForward, deriveValuation, filingsToEvents, insidersToEvents, mergeEvents, newsToEvents, periodSource, type ChartEvent, type ForwardValuation, type Valuation,
 } from '../lib/helpers';
 
 /** Compact meta summary used for per-section badges + the page MockBanner. */
@@ -32,7 +32,10 @@ export interface CoreData {
   week52: { high: number | null; low: number | null };
   marketCap: number | null;
   valuation: Valuation;
-  sources: { price: SourceRef; marketCap: SourceRef; pe: SourceRef; evEbitda: SourceRef; range: SourceRef; profile: SourceRef };
+  /** Forward EPS / P/E from analyst consensus (null fields when no real or same-mode estimate is available). */
+  forward: ForwardValuation;
+  sources: { price: SourceRef; marketCap: SourceRef; pe: SourceRef; evEbitda: SourceRef; range: SourceRef; profile: SourceRef; fwdEps: SourceRef; fwdPe: SourceRef };
+  /** Header-critical data only (profile, quote, 1Y history, financials) — drives the page-level MockBanner. */
   meta: SectionMeta;
   found: boolean;
 }
@@ -49,22 +52,34 @@ function quoteFromBars(ticker: string, bars: Bar[]): Quote | null {
 }
 
 export async function loadCore(ticker: string): Promise<CoreData> {
+  // 52-week range + fallback quote always come from DAILY 1Y bars (never the intraday 1D/1W ranges).
   const [p, q, h] = await Promise.all([md().getProfile(ticker), md().getQuote(ticker), md().getHistory(ticker, '1Y')]);
   const profile = p.data;
   const bars1Y = h.data ?? [];
   const quote = q.data ?? quoteFromBars(ticker, bars1Y);
   const found = !!(profile || q.data || bars1Y.length);
-  // Only spend provider calls on statements once we know the symbol exists.
-  const emptyFin = { data: null, meta: { source: [], isMock: true, asOf: new Date().toISOString(), provider: 'none' } };
-  const [fa, fq] = found ? await Promise.all([md().getFinancials(ticker, 'annual'), md().getFinancials(ticker, 'quarterly')]) : [emptyFin, emptyFin];
+  // Only spend provider calls (incl. the 25/day Alpha Vantage quota) on statements/estimates once we know the symbol exists.
+  const none = { data: null, meta: { source: [], isMock: true, asOf: new Date().toISOString(), provider: 'none' } };
+  const [fa, fq, e] = found
+    ? await Promise.all([md().getFinancials(ticker, 'annual'), md().getFinancials(ticker, 'quarterly'), md().getEstimates(ticker)])
+    : [none, none, none];
   const hi = bars1Y.length ? Math.max(...bars1Y.map((b) => b.high)) : profile?.week52High || null;
   const lo = bars1Y.length ? Math.min(...bars1Y.map((b) => b.low)) : profile?.week52Low || null;
-  const shares = profile?.sharesOutstanding || 0;
-  const marketCap = quote?.marketCap || (shares && quote ? shares * quote.price : 0) || profile?.marketCap || null;
+  // Prefer real shares (provider profile, else latest SEC diluted share count) × live price over a quote's estimated cap.
+  const secShares = (fq.data?.rows.at(-1) ?? fa.data?.rows.at(-1))?.sharesOutstanding || 0;
+  const shares = (p.meta.isMock ? 0 : profile?.sharesOutstanding) || (fq.meta.isMock ? 0 : secShares) || profile?.sharesOutstanding || 0;
+  const marketCap = (shares && quote ? shares * quote.price : 0) || quote?.marketCap || profile?.marketCap || null;
   const valuation = deriveValuation({
     price: quote?.price ?? null, marketCap, annual: fa.data?.rows ?? [], quarterly: fq.data?.rows ?? [],
     fallbackPe: profile?.pe, fallbackEvEbitda: profile?.evEbitda,
   });
+  // Use consensus only when it is real, or when the price itself is simulated (pure demo mode) — never mix mock into a live header.
+  const priceMock = q.data ? q.meta.isMock : h.meta.isMock;
+  const est = e.data && (!e.meta.isMock || priceMock) ? e.data : null;
+  const estAsOf = e.meta.asOf.slice(0, 10);
+  const estLabel = e.meta.isMock ? 'Simulated consensus' : `${e.meta.provider ?? 'Provider'} consensus, as of ${estAsOf}`;
+  const forward = deriveForward({ price: quote?.price ?? null, forwardEps: est?.forwardEps, forwardPe: est?.forwardPe, basis: est?.forwardBasis, label: estLabel });
+  const estSrc0 = e.meta.source.find((x) => x.kind === 'estimate') ?? e.meta.source[0];
   const priceSrc0 = q.meta.source.find((s) => s.kind === 'price') ?? h.meta.source[0];
   const finSrc = fq.meta.source[0] ?? fa.meta.source[0];
   const finMock = (fq.data ? fq.meta.isMock : fa.meta.isMock) ?? true;
@@ -77,9 +92,11 @@ export async function loadCore(ticker: string): Promise<CoreData> {
     pe: { id: `pe:${ticker}`, name: finSrc?.name ?? `${ticker} financial statements`, url: finSrc?.url, kind: kindFor(finMock, 'filing'), excerpt: valuation.peBasis, locator: 'Derived from income statement' },
     evEbitda: { id: `ev:${ticker}`, name: finSrc?.name ?? `${ticker} financial statements`, url: finSrc?.url, kind: kindFor(finMock, 'filing'), excerpt: valuation.evBasis, locator: 'Derived from balance sheet + income statement' },
     range: { id: h.meta.source[0]?.id ?? `range:${ticker}`, name: h.meta.source[0]?.name ?? `${ticker} daily bars`, kind: kindFor(h.meta.isMock, 'price'), excerpt: hi && lo ? `52-week range $${lo.toFixed(2)} – $${hi.toFixed(2)} from ${bars1Y.length} daily bars (${prov(h.meta)}).` : '52-week range unavailable.', locator: 'Daily OHLC, trailing 1Y' },
+    fwdEps: { id: `fwdeps:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.epsBasis, locator: est?.forwardBasis ?? 'Forward EPS' },
+    fwdPe: { id: `fwdpe:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.peBasis, locator: 'Forward P/E' },
     profile: { id: p.meta.source[0]?.id ?? `profile:${ticker}`, name: p.meta.source[0]?.name ?? `${ticker} reference data`, url: profile?.website || undefined, kind: kindFor(p.meta.isMock, 'filing'), excerpt: profile?.description || 'No company description available.', locator: 'Company profile' },
   };
-  return { ticker, profile, quote, bars1Y, week52: { high: hi, low: lo }, marketCap, valuation, sources, meta: combineMeta(p.meta, q.meta, h.meta), found };
+  return { ticker, profile, quote, bars1Y, week52: { high: hi, low: lo }, marketCap, valuation, forward, sources, meta: combineMeta(p.meta, q.meta, h.meta, fa.meta, fq.meta), found };
 }
 
 // ------------------------------------------------------------- chart events

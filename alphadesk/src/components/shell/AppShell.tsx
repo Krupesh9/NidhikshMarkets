@@ -1,6 +1,6 @@
 'use client';
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toast';
 import { ChatPanel } from '@/components/ai/ChatPanel';
@@ -25,9 +25,10 @@ function NavShortcut({ combo, href }: { combo: string; href: string }) {
   return null;
 }
 
-export function AppShell({ user, usage, dataMode, watchlist, savedScreens, children }: {
-  user: ClientUser; usage: ClientUsage; dataMode: DataMode; watchlist: string[]; savedScreens: { id: string; name: string }[]; children: React.ReactNode;
+export function AppShell({ user, usage, dataMode, children }: {
+  user: ClientUser; usage: ClientUsage; dataMode: DataMode; children: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
@@ -58,10 +59,13 @@ export function AppShell({ user, usage, dataMode, watchlist, savedScreens, child
           <RightRailProvider>
             <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:rounded focus:bg-info focus:px-3 focus:py-1 focus:text-white">Skip to content</a>
             <div className="flex min-h-screen">
-              <Sidebar collapsed={collapsed} onToggle={toggleSidebar} watchlist={watchlist} savedScreens={savedScreens} />
+              {/* On /watchlist the watchlist pane acts as the left navigation, so the main nav shrinks to an icon rail. */}
+              <Sidebar collapsed={collapsed || pathname.startsWith('/watchlist')} locked={pathname.startsWith('/watchlist')} onToggle={toggleSidebar} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <Topbar onSearch={() => setSearchOpen(true)} onChat={() => setChatOpen(true)} onShortcuts={() => setHelpOpen(true)} />
-                <main id="main" className="min-w-0 flex-1 px-3 pb-20 pt-4 md:px-6 md:pb-8">{children}</main>
+                <main id="main" className="min-w-0 flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-12 md:pt-8">
+                  <div key={pathname.split('/').slice(0, 2).join('/')} className="page-enter mx-auto w-full max-w-[1440px]">{children}</div>
+                </main>
               </div>
               <RightRail />
             </div>

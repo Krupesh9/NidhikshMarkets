@@ -7,15 +7,14 @@ import { FinancialStatements } from './FinancialStatements';
 import { EstimatesPanel } from './EstimatesPanel';
 import { OwnershipPanel } from './OwnershipPanel';
 import { NewsFilingsPanel } from './NewsFilingsPanel';
-import { loadAllMetas, loadChartEvents, loadEstimates, loadFinancials, loadNewsFilings, loadOwnership } from './server/data';
+import { loadAllMetas, loadEstimates, loadFinancials, loadNewsFilings, loadOwnership } from './server/data';
 
 /** Async server sections — each wrapped in <Suspense> by the page so they stream independently. */
 
 export async function ChartSection({ ticker, initialBars, barsMock }: { ticker: string; initialBars: Bar[]; barsMock: boolean }) {
-  const { events, meta } = await loadChartEvents(ticker);
   return (
-    <SectionCard id="chart" title="Price & events" description="Daily OHLCV with earnings, 8-K, insider-buy and major-news markers — click a marker for its source." isMock={meta.isMock || barsMock} providers={meta.providers}>
-      <PriceChart ticker={ticker} initialBars={initialBars} events={events} isMock={meta.isMock} />
+    <SectionCard id="chart" title="Price chart" description="Intraday to max-history OHLCV with volume. Add SMA, EMA, SMA × EMA crossovers, MACD and RSI from the indicator toolbar." isMock={barsMock}>
+      <PriceChart ticker={ticker} initialBars={initialBars} />
     </SectionCard>
   );
 }
@@ -29,11 +28,11 @@ export async function FinancialsSection({ ticker, cik }: { ticker: string; cik?:
   );
 }
 
-export async function EstimatesSection({ ticker }: { ticker: string }) {
+export async function EstimatesSection({ ticker, price = null }: { ticker: string; price?: number | null }) {
   const d = await loadEstimates(ticker);
   return (
-    <SectionCard id="estimates" title="Consensus estimates" description="Next FY / next quarter consensus and revision trend." isMock={d.meta.isMock} providers={d.meta.providers}>
-      <EstimatesPanel ticker={ticker} estimates={d.estimates} source={d.source} />
+    <SectionCard id="estimates" title="Analysis" description="Analyst ratings, 12-month price targets, recent analyst actions and consensus estimates." isMock={d.meta.isMock} providers={d.meta.providers}>
+      <EstimatesPanel ticker={ticker} estimates={d.estimates} source={d.source} price={price} />
     </SectionCard>
   );
 }
@@ -56,9 +55,12 @@ export async function NewsFilingsSection({ ticker }: { ticker: string }) {
   );
 }
 
-/** Page-level MockBanner: shown when any section on screen is (partly) simulated. */
-export async function PageMockBanner({ ticker, cik, includeBody }: { ticker: string; cik?: string; includeBody: boolean }) {
-  const m = await loadAllMetas(ticker, cik, includeBody);
+/**
+ * Page-level MockBanner: only when header-critical data (quote, 1Y history, profile, financials) is simulated.
+ * Sections that are still mock (e.g. insiders/13F/catalysts with no real source) keep their own "Demo" badge (SectionCard).
+ */
+export async function PageMockBanner({ ticker, cik }: { ticker: string; cik?: string; includeBody: boolean }) {
+  const m = await loadAllMetas(ticker, cik, false); // core meta only (cached provider calls)
   const real = m.providers.filter((p) => p !== 'Mock');
   return <MockBanner isMock={m.isMock} provider={real.length ? real.join(' + ') : 'Mock'} />;
 }

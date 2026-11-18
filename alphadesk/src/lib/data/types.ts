@@ -78,7 +78,7 @@ export interface Quote {
 }
 
 export interface Bar {
-  /** ISO date (YYYY-MM-DD) */
+  /** Daily bars: ISO date (YYYY-MM-DD). Intraday ranges (1D/1W): full ISO timestamp, e.g. 2026-11-17T14:35:00Z. */
   date: string;
   open: number;
   high: number;
@@ -87,7 +87,11 @@ export interface Bar {
   volume: number;
 }
 
-export type HistoryRange = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'MAX';
+export type HistoryRange = '1D' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1Y' | '5Y' | 'MAX';
+
+/** 1D = latest session in 5-minute bars; 1W = last 5 sessions in 30-minute bars. Everything else is daily. */
+export const INTRADAY_RANGES: readonly HistoryRange[] = ['1D', '1W'];
+export const isIntradayRange = (r: HistoryRange): r is '1D' | '1W' => r === '1D' || r === '1W';
 
 export interface Profile {
   ticker: string;
@@ -176,6 +180,27 @@ export interface Estimates {
   rating: { buy: number; hold: number; sell: number };
   priceTarget: { mean: number; high: number; low: number };
   periods: EstimatePeriod[];
+  /** Consensus EPS for the next fiscal year-end to be reported (explicit estimate when the provider has one). */
+  forwardEps?: number;
+  /** Provider-reported forward P/E (e.g. Alpha Vantage OVERVIEW ForwardPE). */
+  forwardPe?: number;
+  trailingEps?: number;
+  /** Fiscal period the forward EPS refers to, e.g. 'FY2027 (ending 2027-01-31)'. */
+  forwardBasis?: string;
+  /** Individual analyst actions (needs a ratings feed such as Benzinga via Massive, or FMP). Newest first. */
+  analystActions?: AnalystAction[];
+}
+
+export interface AnalystAction {
+  analyst?: string;
+  firm: string;
+  rating: 'buy' | 'hold' | 'sell';
+  /** Rating as published, e.g. 'Overweight'. */
+  ratingLabel?: string;
+  action: 'upgraded' | 'downgraded' | 'maintained' | 'initiated' | 'reiterated' | 'target-raised' | 'target-lowered';
+  priceTarget?: number;
+  date: string;
+  url?: string;
 }
 
 export interface InsiderTxn {
