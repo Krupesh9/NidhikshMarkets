@@ -99,6 +99,7 @@ describe('issuer name normalisation and CUSIP matching', () => {
     expect(prettyHolder('VANGUARD GROUP INC')).toBe('Vanguard Group Inc');
     expect(prettyHolder('FMR LLC')).toBe('FMR LLC');
     expect(prettyHolder('BlackRock, Inc.')).toBe('BlackRock, Inc.');
+    expect(prettyHolder('BANK OF AMERICA CORP /DE/')).toBe('Bank Of America Corp');
   });
 });
 
