@@ -14,5 +14,9 @@ export const fmt = {
   num: (n: number | null | undefined, dp = 0) => (n == null || !isFinite(n) ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: dp, minimumFractionDigits: dp })),
   compact: (n: number | null | undefined) => (n == null || !isFinite(n) ? '—' : compact.format(n)),
   multiple: (n: number | null | undefined) => (n == null || !isFinite(n) || n <= 0 ? '—' : `${n.toFixed(1)}x`),
-  date: (s: string | Date | null | undefined) => (!s ? '—' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
+  // Date-only strings ("2026-06-30") are calendar dates: format them in UTC so US time zones don't show the day before.
+  date: (s: string | Date | null | undefined) => (!s ? '—'
+    : typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+      ? new Date(`${s}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+      : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
 };

@@ -206,7 +206,8 @@ export function qoqChange(shares, priorShares) {
 const KEEP_UPPER = new Set(['LLC', 'LP', 'LLP', 'PLC', 'NA', 'N.A.', 'FMR', 'UBS', 'AG', 'USA', 'US', 'II', 'III', 'IV', 'BNY', 'JPMORGAN', 'TIAA', 'CREF', 'AXA', 'BMO', 'RBC', 'TD', 'HSBC', 'ING', 'DFA', 'AQR', 'PNC', 'SA', 'NV', 'ETF', 'S&P', 'ABN', 'AMRO', 'BNP', 'CIBC', 'DWS', 'SG', 'T.', 'UBS', 'APG', 'NBIM', 'MFS', 'IFM']);
 /** "VANGUARD GROUP INC" -> "Vanguard Group Inc"; mixed-case names are left as filed. */
 export function prettyHolder(name) {
-  const n = String(name ?? '').trim().replace(/\s+/g, ' ');
+  // drop SEC conformed-name state suffixes: "BANK OF AMERICA CORP /DE/" -> "BANK OF AMERICA CORP"
+  const n = String(name ?? '').trim().replace(/\s+/g, ' ').replace(/\s*\/[A-Za-z ]{1,6}\/?\s*$/, '');
   if (/[a-z]/.test(n)) return n;
   return n.split(' ').map((w) => {
     if (KEEP_UPPER.has(w) || KEEP_UPPER.has(w.replace(/[,.]$/, ''))) return w;
