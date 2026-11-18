@@ -93,10 +93,12 @@ function ForecastCard({ e, ticker, price }: { e: Estimates; ticker: string; pric
               return (
                 <div key={x.k} className="flex items-center gap-3">
                   <span className="w-[72px] text-sm text-muted">{x.k}</span>
-                  <div className="relative h-8 flex-1">
-                    <div className="flex h-full items-center justify-end rounded-md bg-info/80 px-3 font-mono text-xs font-semibold tabular-nums text-white transition-[width] duration-700 ease-out" style={{ width: `${(x.v / max) * 100}%` }}>
-                      <span className="whitespace-nowrap">${fmt.price(x.v)}{d != null && <span className="ml-1 font-normal opacity-90">({d >= 0 ? '+' : ''}{d.toFixed(1)}%)</span>}</span>
+                  <div className="relative flex h-8 flex-1 items-center gap-2">
+                    {/* short bars show the value beside the bar so it never overlaps the row label */}
+                    <div className="flex h-full shrink-0 items-center justify-end rounded-md bg-info/80 px-3 font-mono text-xs font-semibold tabular-nums text-white transition-[width] duration-700 ease-out" style={{ width: `${(x.v / max) * 100}%` }}>
+                      {(x.v / max) * 100 >= 40 && <span className="whitespace-nowrap">${fmt.price(x.v)}{d != null && <span className="ml-1 font-normal opacity-90">({d >= 0 ? '+' : ''}{d.toFixed(1)}%)</span>}</span>}
                     </div>
+                    {(x.v / max) * 100 < 40 && <span className="whitespace-nowrap font-mono text-xs tabular-nums">${fmt.price(x.v)}{d != null && <span className="ml-1 text-muted">({d >= 0 ? '+' : ''}{d.toFixed(1)}%)</span>}</span>}
                   </div>
                 </div>
               );
