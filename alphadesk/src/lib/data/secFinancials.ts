@@ -17,6 +17,8 @@ const T = {
   costOfRevenue: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
   grossProfit: ['GrossProfit'],
   operatingIncome: ['OperatingIncomeLoss'],
+  pretaxIncome: ['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic'],
+  interestExpense: ['InterestExpense', 'InterestExpenseNonoperating', 'InterestExpenseDebt', 'InterestAndDebtExpense'],
   netIncome: ['NetIncomeLoss', 'ProfitLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic'],
   eps: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'EarningsPerShareBasic'],
   da: ['DepreciationDepletionAndAmortization', 'DepreciationAndAmortization', 'DepreciationAmortizationAndAccretionNet', 'Depreciation'],
@@ -158,7 +160,11 @@ function buildRow(fx: Facts, p: Period): FinancialStatementRow | null {
   const revenue = rev?.val ?? 0;
   const cogs = flow(T.costOfRevenue);
   const grossProfit = flow(T.grossProfit)?.val ?? (rev && cogs ? revenue - cogs.val : 0);
-  const operatingIncome = flow(T.operatingIncome)?.val ?? 0;
+  // Many filers (e.g. LLY, JNJ, AXP) don't report OperatingIncomeLoss; fall back to EBIT ≈ pretax income + interest expense.
+  const opReported = flow(T.operatingIncome)?.val;
+  const pretax = flow(T.pretaxIncome)?.val;
+  const ebit = opReported ?? (pretax != null ? pretax + Math.abs(flow(T.interestExpense)?.val ?? 0) : null);
+  const operatingIncome = ebit ?? 0;
   const netIncome = ni?.val ?? 0;
   const da = flow(T.da)?.val ?? 0;
   const ocf = flow(T.ocf)?.val ?? 0;
@@ -173,7 +179,7 @@ function buildRow(fx: Facts, p: Period): FinancialStatementRow | null {
   const src = rev ?? ni!;
   return {
     fiscalYear: p.fiscalYear, fiscalPeriod: p.fiscalPeriod, periodEnd: p.end,
-    revenue, grossProfit, operatingIncome, netIncome, ebitda: operatingIncome + da, eps: Math.round(eps * 100) / 100,
+    revenue, grossProfit, operatingIncome, netIncome, ebitda: ebit != null ? ebit + da : 0 /* 0 = unknown: EV/EBITDA not meaningful */, eps: Math.round(eps * 100) / 100,
     totalAssets: assets, totalLiabilities: liabilities, totalEquity: equity, cash: inst(T.cash)?.val ?? 0, totalDebt,
     operatingCashFlow: ocf, capex, freeCashFlow: ocf - capex, sharesOutstanding: shares,
     grossMargin: pct(grossProfit, revenue), operatingMargin: pct(operatingIncome, revenue), netMargin: pct(netIncome, revenue),

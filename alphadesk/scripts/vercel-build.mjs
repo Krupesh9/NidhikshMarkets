@@ -9,13 +9,14 @@
  */
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { pulseDbUrl, pulseDirectUrl } from '../src/lib/db-url.mjs';
+import { pulseDbUrl, pulseDirectUrl, resolveDatabaseUrl } from '../src/lib/db-url.mjs';
 
-if (!/^postgres(ql)?:\/\//.test(process.env.DATABASE_URL ?? '')) {
-  console.error('DATABASE_URL must be a Postgres URL on Vercel (Supabase or Neon).');
+const dbUrl = resolveDatabaseUrl();
+if (!/^postgres(ql)?:\/\//.test(dbUrl ?? '')) {
+  console.error('No Postgres database connected. In Vercel: Project → Storage → Create Database (Supabase or Neon) → Connect, then redeploy.');
   process.exit(1);
 }
-const env = { ...process.env, DATABASE_URL: pulseDbUrl(process.env.DATABASE_URL) };
+const env = { ...process.env, DATABASE_URL: pulseDbUrl(dbUrl) };
 const direct = pulseDirectUrl();
 if (direct) env.PULSE_DIRECT_URL = direct;
 const schema = readFileSync('prisma/schema.prisma', 'utf8').replace(
