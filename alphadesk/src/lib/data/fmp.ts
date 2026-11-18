@@ -89,3 +89,14 @@ export async function getAnalystView(ticker: string): Promise<AnalystView | null
     source: { name: 'Financial Modeling Prep', url: FMP_SITE },
   };
 }
+
+export interface IndexQuote { symbol: string; name: string; price: number; change: number; changePct: number; ts: string }
+
+/** Live index level from FMP (e.g. ^GSPC, ^IXIC, ^DJI). Cached 60s. Null when unavailable on the plan. */
+export async function getIndexQuote(symbol: string): Promise<IndexQuote | null> {
+  if (!fmpEnabled()) return null;
+  const rows = await cache.wrap(`fmp:idx:${symbol}`, () => get<{ symbol: string; name: string; price: number; change: number; changePercentage: number; timestamp?: number }[]>(`quote?symbol=${encodeURIComponent(symbol)}`), 60_000);
+  const q = rows?.[0];
+  if (!q || !Number.isFinite(q.price)) return null;
+  return { symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePercentage, ts: q.timestamp ? new Date(q.timestamp * 1000).toISOString() : new Date().toISOString() };
+}

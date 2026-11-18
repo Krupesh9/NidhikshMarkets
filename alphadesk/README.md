@@ -1,4 +1,4 @@
-# NidhikshDesk
+# Nidhiksh Pulse (formerly NidhikshDesk)
 
 > Formerly **AlphaDesk**. Some identifiers keep the old name (`ALPHADESK_FORCE_MOCK`, the `alphadesk/` folder).
 

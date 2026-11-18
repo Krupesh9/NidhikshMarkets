@@ -28,7 +28,7 @@ export function Sidebar({ collapsed, onToggle, locked }: SidebarProps) {
           <Image src="/nidhiksh-logo.png" alt="" width={collapsed ? 36 : 64} height={collapsed ? 36 : 64} className="rounded-lg transition-all duration-300" priority />
           {!collapsed && (
             <span className="text-center">
-              <span className="block text-lg font-semibold tracking-tight">Nidhiksh<span className="text-accent">Desk</span></span>
+              <span className="block text-xl font-semibold tracking-tight">Nidhiksh <span className="text-accent">Pulse</span></span>
               <span className="mt-1 block text-[10px] font-medium uppercase tracking-[0.18em] text-muted">Markets · Private research</span>
             </span>
           )}

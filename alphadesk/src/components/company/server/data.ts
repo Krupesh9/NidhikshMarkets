@@ -1,6 +1,8 @@
 import 'server-only';
 import { getMarketData } from '@/lib/data';
 import { getAnalystView } from '@/lib/data/fmp';
+import { getCalendarEvents } from '@/lib/calendar';
+import { addDays, todayET } from '@/lib/calendar/dates';
 import type {
   Bar, Catalyst, DataMeta, Estimates, Filing, Financials, InsiderTxn, InstitutionalHolding, NewsItem, Profile, Quote, SourceRef,
 } from '@/lib/data/types';
@@ -173,8 +175,17 @@ export async function loadOwnership(ticker: string): Promise<OwnershipData> {
 
 export interface NewsFilingsData { news: NewsItem[]; filings: Filing[]; catalysts: Catalyst[]; meta: SectionMeta; newsProvider?: string; filingsProvider?: string; catalystsMock: boolean }
 export async function loadNewsFilings(ticker: string): Promise<NewsFilingsData> {
-  const [n, f, c] = await Promise.all([md().getNews(ticker), md().getFilings(ticker), md().getCatalysts(ticker)]);
-  return { news: n.data ?? [], filings: f.data ?? [], catalysts: c.data ?? [], meta: combineMeta(n.meta, f.meta, c.meta), newsProvider: n.meta.provider, filingsProvider: f.meta.provider, catalystsMock: c.meta.isMock };
+  const [n, f, cal] = await Promise.all([
+    md().getNews(ticker), md().getFilings(ticker),
+    getCalendarEvents({ categories: ['earnings'], watchlist: [ticker], from: todayET(), to: addDays(todayET(), 180) }).catch(() => null),
+  ]);
+  // Earnings dates from the real calendar (Alpha Vantage); fall back to provider catalysts only when it has none.
+  const real: Catalyst[] = (cal?.events ?? [])
+    .filter((e) => e.ticker === ticker.toUpperCase() && !e.estimated)
+    .map((e) => ({ id: e.id, ticker: e.ticker, type: 'earnings', title: e.title, date: e.date, confirmed: true, description: [e.detail, e.source.name].filter(Boolean).join(' · ') }));
+  const c = real.length ? null : await md().getCatalysts(ticker);
+  const metas = c ? [n.meta, f.meta, c.meta] : [n.meta, f.meta];
+  return { news: n.data ?? [], filings: f.data ?? [], catalysts: real.length ? real : c?.data ?? [], meta: combineMeta(...metas), newsProvider: n.meta.provider, filingsProvider: f.meta.provider, catalystsMock: c ? c.meta.isMock : false };
 }
 
 // ------------------------------------------------------------- aggregate (API / AI / sharing)

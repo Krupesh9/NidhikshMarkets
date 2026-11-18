@@ -55,7 +55,7 @@ export function Topbar({ onSearch, onChat, onShortcuts }: { onSearch: () => void
   const { user } = useCurrentUser();
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-bg/80 px-4 backdrop-blur-md md:px-8">
-      <Link href="/dashboard" className="md:hidden" aria-label="NidhikshDesk home"><Logo size={24} showName={false} /></Link>
+      <Link href="/dashboard" className="md:hidden" aria-label="Nidhiksh Pulse home"><Logo size={24} showName={false} /></Link>
       <button
         onClick={onSearch}
         className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-panel px-2.5 text-sm text-muted hover:border-info/50 md:max-w-md"

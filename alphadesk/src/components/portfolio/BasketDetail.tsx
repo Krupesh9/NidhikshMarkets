@@ -74,7 +74,7 @@ export function BasketDetail({ initial }: { initial: BasketDTO }) {
     `Synthetic basket: ${usd(data.notional)} notional struck at target weights on ${data.rebalanceDate} (assumed last ${SINCE.find((s) => s[0] === data.since)?.[1].toLowerCase() ?? data.since} rebalance) at that day's close; shares then held constant.`,
     `Drift = current weight − target weight. Tolerance band ±${pct(r!.tolerance, 0)} (absolute). ${mode === 'band' ? 'Band mode trades only names outside the band, funded pro-rata from in-band names so the basket stays fully invested.' : 'Full mode trades every name back to target.'}`,
     'Share counts are rounded toward zero to whole shares; residual cash is shown. No commissions, spreads, taxes or market impact are modelled.',
-    'Suggested trades are research output only — NidhikshDesk does not route or execute orders.',
+    'Suggested trades are research output only — Nidhiksh Pulse does not route or execute orders.',
   ] : [];
   const snapshot = () => ({
     name: basket.name, description: basket.description, thesis: basket.thesis, isMock: data?.meta.isMock,

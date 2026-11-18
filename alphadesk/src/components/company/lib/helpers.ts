@@ -237,6 +237,9 @@ export function sumLast(rows: FinancialStatementRow[], key: keyof FinancialState
 export interface Valuation {
   pe: number | null;
   peBasis: string;
+  /** Trailing-twelve-month diluted EPS (last 4 quarters, else latest FY). */
+  epsTtm: number | null;
+  epsBasis: string;
   evEbitda: number | null;
   evBasis: string;
   ev: number | null;
@@ -284,7 +287,7 @@ export function deriveValuation(input: {
       evBasis = `Provider-reported EV/EBITDA ${evEbitda.toFixed(1)}x`;
     } else evBasis = 'Not meaningful (negative or missing EBITDA)';
   }
-  return { pe, peBasis, evEbitda, evBasis, ev };
+  return { pe, peBasis, epsTtm: eps ?? null, epsBasis: epsBasis || 'No reported diluted EPS', evEbitda, evBasis, ev };
 }
 
 export interface ForwardValuation { eps: number | null; pe: number | null; epsBasis: string; peBasis: string }

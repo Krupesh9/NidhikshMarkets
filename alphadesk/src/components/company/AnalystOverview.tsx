@@ -25,43 +25,56 @@ function NeedsFeed({ what }: { what: string }) {
   );
 }
 
-/** Donut with Buy / Hold / Sell counts and the consensus label. */
+/** Donut with Buy / Hold / Sell counts, consensus in the centre and share bars in the legend. */
 function RatingsCard({ e, ticker }: { e: Estimates; ticker: string }) {
   const { buy, hold, sell } = e.rating;
   const total = buy + hold + sell;
-  const r = 52, c = 2 * Math.PI * r, gap = total > 1 ? 4 : 0;
-  let offset = 0;
+  const size = 200, stroke = 22, r = (size - stroke) / 2, c = 2 * Math.PI * r;
   const parts = (['buy', 'hold', 'sell'] as Key[]).map((k) => ({ k, n: e.rating[k] })).filter((p) => p.n > 0);
+  const gap = parts.length > 1 ? 3 : 0; // px of empty arc between segments (flat ends, so small slices stay visible)
   const consensus: Key = buy >= hold && buy >= sell ? 'buy' : sell > hold ? 'sell' : 'hold';
+  let offset = 0;
   return (
     <section className="rounded-xl border border-border bg-panel-2/40 p-5" aria-labelledby="ar-h">
       <h3 id="ar-h" className="text-[15px] font-semibold">Analyst ratings</h3>
       {total === 0 ? <div className="mt-4"><NeedsFeed what="Buy / hold / sell ratings" /></div> : (
         <>
           <p className="mt-1 text-xs text-muted">Based on {total} analysts currently rating {ticker} (strong buy counted as buy, strong sell as sell).</p>
-          <div className="mt-5 flex flex-wrap items-center gap-8">
-            <figure className="flex flex-col items-center gap-2">
-              <svg width={132} height={132} viewBox="0 0 132 132" role="img" aria-label={`${buy} buy, ${hold} hold, ${sell} sell`}>
-                <g transform="rotate(-90 66 66)">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+            <figure className="relative" style={{ width: size, height: size }}>
+              <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${buy} buy, ${hold} hold, ${sell} sell; consensus ${RATING[consensus].label}`}>
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(var(--border))" strokeWidth={stroke} opacity={0.5} />
+                <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
                   {parts.map((p) => {
-                    const len = (p.n / total) * c - gap;
-                    const el = <circle key={p.k} cx={66} cy={66} r={r} fill="none" stroke={RATING[p.k].color} strokeWidth={14} strokeLinecap="round"
-                      strokeDasharray={`${Math.max(len, 0.1)} ${c}`} strokeDashoffset={-offset} className="transition-[stroke-dasharray] duration-700 ease-out" />;
+                    const len = Math.max((p.n / total) * c - gap, 2);
+                    const el = <circle key={p.k} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={RATING[p.k].color} strokeWidth={stroke} strokeLinecap="butt"
+                      strokeDasharray={`${len} ${c}`} strokeDashoffset={-offset} className="transition-[stroke-dasharray] duration-700 ease-out" />;
                     offset += (p.n / total) * c;
                     return el;
                   })}
                 </g>
               </svg>
-              <figcaption className="text-base font-semibold" style={{ color: RATING[consensus].color }}>{RATING[consensus].label}</figcaption>
+              <figcaption className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-semibold" style={{ color: RATING[consensus].color }}>{RATING[consensus].label}</span>
+                <span className="mt-0.5 text-xs text-muted">consensus · {total} analysts</span>
+              </figcaption>
             </figure>
-            <dl className="min-w-[140px] flex-1 space-y-3 text-sm">
-              {(['buy', 'hold', 'sell'] as Key[]).map((k) => (
-                <div key={k} className="flex items-center gap-3">
-                  <span className="h-3 w-3 rounded-sm" style={{ background: RATING[k].color }} aria-hidden />
-                  <dt className="flex-1">{RATING[k].label}</dt>
-                  <dd className="font-mono tabular-nums">{e.rating[k]}</dd>
-                </div>
-              ))}
+            <dl className="w-full max-w-[240px] space-y-4 text-sm">
+              {(['buy', 'hold', 'sell'] as Key[]).map((k) => {
+                const share = total ? (e.rating[k] / total) * 100 : 0;
+                return (
+                  <div key={k}>
+                    <div className="flex items-center gap-3">
+                      <span className="h-3 w-3 rounded-sm" style={{ background: RATING[k].color }} aria-hidden />
+                      <dt className="flex-1 font-medium">{RATING[k].label}</dt>
+                      <dd className="font-mono tabular-nums">{e.rating[k]} <span className="text-muted">· {share.toFixed(0)}%</span></dd>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/60" aria-hidden>
+                      <div className="h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${share}%`, background: RATING[k].color }} />
+                    </div>
+                  </div>
+                );
+              })}
             </dl>
           </div>
         </>

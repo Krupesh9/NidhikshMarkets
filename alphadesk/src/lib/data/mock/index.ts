@@ -10,7 +10,7 @@ import { synthIntraday } from '../intraday';
 import { FILING_EXCERPTS, NEWS_TEMPLATES, PUBLISHERS, SEGMENT_BY_SECTOR, TRANSCRIPT_LINES, fill } from './content';
 
 const DAY = 86_400_000;
-const MOCK_SOURCE: SourceRef = { id: 'mock:dataset', name: 'NidhikshDesk demo dataset (simulated)', kind: 'mock' };
+const MOCK_SOURCE: SourceRef = { id: 'mock:dataset', name: 'Nidhiksh Pulse demo dataset (simulated)', kind: 'mock' };
 
 function todayUTC(): Date {
   const d = new Date();

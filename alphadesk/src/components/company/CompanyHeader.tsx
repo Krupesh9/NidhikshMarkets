@@ -63,6 +63,9 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
           <KeyStat label="P/E (TTM)">
             <MetricButton source={sources.pe} highlight={valuation.pe ? `${valuation.pe.toFixed(1)}x` : undefined} label="P/E">{fmt.multiple(valuation.pe)}</MetricButton>
           </KeyStat>
+          <KeyStat label="EPS (TTM)">
+            <MetricButton source={{ ...sources.pe, id: `${sources.pe.id}:eps`, excerpt: valuation.epsBasis, locator: 'Diluted EPS, trailing 12 months' }} highlight={valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : undefined} label="EPS (TTM)">{valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : '—'}</MetricButton>
+          </KeyStat>
           <KeyStat label="Fwd EPS">
             <MetricButton source={sources.fwdEps} highlight={forward.eps != null ? `$${forward.eps.toFixed(2)}` : undefined} label="Forward EPS">{forward.eps != null ? `$${forward.eps.toFixed(2)}` : '—'}</MetricButton>
           </KeyStat>

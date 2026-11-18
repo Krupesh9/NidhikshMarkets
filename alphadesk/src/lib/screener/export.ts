@@ -23,7 +23,7 @@ export function toCsv(rows: ScreenRow[], cols: ColumnDef[]): string {
 
 export async function toXlsx(rows: ScreenRow[], cols: ColumnDef[], ctx: { title: string; filters: FilterState; meta: DataMeta }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'NidhikshDesk';
+  wb.creator = 'Nidhiksh Pulse';
   wb.created = new Date();
   const ws = wb.addWorksheet('Screen', { views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }] });
   ws.columns = cols.map((c) => ({

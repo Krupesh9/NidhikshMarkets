@@ -42,7 +42,7 @@ export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Image src="/nidhiksh-logo.png" alt="" width={64} height={64} className="rounded-lg" priority />
-          <h1 className="text-2xl font-semibold tracking-tight">Nidhiksh<span className="text-accent">Desk</span></h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Nidhiksh <span className="text-accent">Pulse</span></h1>
           <p className="text-sm text-muted">Research &amp; decision platform for PMs and analysts.</p>
         </div>
         <div className="rounded-lg border border-border bg-panel p-5 shadow-xl">

@@ -65,10 +65,10 @@ export function EstimatesPanel({ ticker, estimates, source, price = null }: { ti
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <EstimateTile label="Next FY EPS" p={eps.fy} ticker={ticker} source={source} />
-          <EstimateTile label="Next FY revenue" p={rev.fy} ticker={ticker} source={source} />
           <EstimateTile label="Next Q EPS" p={eps.q} ticker={ticker} source={source} />
           <EstimateTile label="Next Q revenue" p={rev.q} ticker={ticker} source={source} />
+          <EstimateTile label="Next FY EPS" p={eps.fy} ticker={ticker} source={source} />
+          <EstimateTile label="Next FY revenue" p={rev.fy} ticker={ticker} source={source} />
         </div>
       </div>
 

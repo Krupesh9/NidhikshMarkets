@@ -59,7 +59,7 @@ export function SharedItemPage({ share, comments, viewer }: SharedItemProps) {
         <div className="flex min-h-screen">
           <div className="min-w-0 flex-1">
             <header className="sticky top-0 z-20 flex h-12 items-center justify-between gap-3 border-b border-border bg-bg/90 px-4 backdrop-blur">
-              <Link href={viewer.signedIn ? '/dashboard' : '/login'} aria-label="NidhikshDesk home"><Logo /></Link>
+              <Link href={viewer.signedIn ? '/dashboard' : '/login'} aria-label="Nidhiksh Pulse home"><Logo /></Link>
               {viewer.signedIn ? (
                 <Link href="/shared" className="inline-flex items-center gap-1 text-xs text-muted hover:text-text"><ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Team feed</Link>
               ) : (

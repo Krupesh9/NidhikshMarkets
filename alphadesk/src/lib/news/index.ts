@@ -29,7 +29,7 @@ const FEED_TTL_MS = 5 * 60_000;
 const FAIL_TTL_MS = 60_000;
 const MAX_TICKER_FEEDS = 10;
 // Plain UA: Yahoo rate-limits browser-like UAs; every other feed accepts this.
-const UA = 'Mozilla/5.0 (compatible; NidhikshDesk/1.0; research headlines)';
+const UA = 'Mozilla/5.0 (compatible; NidhikshPulse/1.0; research headlines)';
 
 interface FeedResult { ok: boolean; items: NewsItem[]; error?: string }
 

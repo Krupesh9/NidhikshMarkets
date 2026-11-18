@@ -86,7 +86,7 @@ export default async function CompanyPage({ params }: { params: { ticker: string
             <NewsFilingsSection ticker={ticker} />
           </Suspense>
           <p className="pb-2 text-center text-[11px] text-muted">
-            {dd.counted ? 'Counted as a deep dive today. ' : ''}Data via the NidhikshDesk provider chain; click any figure for its source. Research only — not investment advice.
+            {dd.counted ? 'Counted as a deep dive today. ' : ''}Data via the Nidhiksh Pulse provider chain; click any figure for its source. Research only — not investment advice.
           </p>
         </>
       )}

@@ -1,5 +1,6 @@
 import 'server-only';
-import type { Filing, FinancialPeriod, Financials, PartialProvider, SourceRef, WithMeta } from './types';
+import type { Filing, FinancialPeriod, Financials, InsiderTxn, PartialProvider, SourceRef, WithMeta } from './types';
+import { parseForm4 } from './secForm4';
 import { factMapFromCompanyFacts, mapSecFinancials, secFilingUrl, type FactMap, type XbrlFact } from './secFinancials';
 import { getNidhikshSecFundamentals } from './nidhiksh';
 import { cache } from '../cache';
@@ -101,6 +102,39 @@ export const secProvider: PartialProvider = {
       locator: 'XBRL companyfacts',
     }] : [];
     return { data, meta: { source: src, isMock: false, asOf: f?.asOf ?? new Date().toISOString(), provider: f?.origin === 'cache' ? 'SEC EDGAR (Nidhiksh cache)' : NAME } };
+  },
+  /** Insider transactions from the latest Form 4 filings (raw XML), refreshed hourly. */
+  async getInsiders(ticker: string): Promise<WithMeta<InsiderTxn[]>> {
+    const T = ticker.toUpperCase();
+    const empty = { data: [] as InsiderTxn[], meta: { source: [], isMock: false, asOf: new Date().toISOString(), provider: NAME } };
+    if (!secEnabled()) return empty;
+    const cik = await secCikFor(T);
+    if (!cik) return empty;
+    const cikInt = String(Number(cik));
+    const data = await cache.wrap(`sec:form4:${cik}`, async () => {
+      const sub = await secJson<Submissions>(`https://data.sec.gov/submissions/CIK${cik}.json`);
+      const r = sub.filings.recent;
+      const docs: { acc: string; url: string; xmlUrl: string }[] = [];
+      for (let i = 0; i < r.form.length && docs.length < 20; i++) {
+        if (r.form[i] !== '4') continue;
+        const acc = r.accessionNumber[i];
+        const base = `https://www.sec.gov/Archives/edgar/data/${cikInt}/${acc.replace(/-/g, '')}/`;
+        const doc = r.primaryDocument[i];
+        docs.push({ acc, url: base + doc, xmlUrl: base + doc.split('/').pop() });
+      }
+      const out: InsiderTxn[] = [];
+      for (const d of docs) { // sequential: stays well under SEC's 10 requests/second
+        try {
+          const res = await fetch(d.xmlUrl, { headers: { 'User-Agent': process.env.SEC_USER_AGENT ?? '' }, signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
+          if (res.ok) out.push(...parseForm4(await res.text(), T, d.url, d.acc));
+        } catch (e) { log.debug('sec.form4_failed', { acc: d.acc, err: (e as Error).message }); }
+      }
+      return out.sort((a, b) => b.date.localeCompare(a.date));
+    }, 3600_000);
+    return {
+      data,
+      meta: { source: data.slice(0, 3).map((t) => ({ id: t.id, name: `${T} Form 4 · ${t.insider} · ${t.date}`, url: t.filingUrl, kind: 'ownership' as const })), isMock: false, asOf: new Date().toISOString(), provider: `${NAME} Form 4` },
+    };
   },
   async getFilings(ticker: string): Promise<WithMeta<Filing[]>> {
     const T = ticker.toUpperCase();

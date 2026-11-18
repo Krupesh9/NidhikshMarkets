@@ -14,21 +14,30 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { MockBanner } from '@/components/shell/MockBanner';
 import { fmt, cn } from '@/lib/utils';
 import { CompanyLogo } from '@/components/ui/company-logo';
-import { fredLatest, type Yield } from './fred';
+import { fredLatest } from './fred';
+import { FMP_SITE, getIndexQuote } from '@/lib/data/fmp';
 
-/** Global markets strip. Equity indices and commodities use liquid ETF proxies (Alpaca/Massive free tiers carry no index or futures prices); Treasury yields come from FRED. */
-export const GLOBAL_MARKETS = [
-  { kind: 'etf', t: 'SPY', label: 'S&P 500' },
-  { kind: 'etf', t: 'QQQ', label: 'Nasdaq 100' },
-  { kind: 'etf', t: 'DIA', label: 'Dow Jones' },
-  { kind: 'etf', t: 'OEF', label: 'S&P 100' },
-  { kind: 'etf', t: 'ONEQ', label: 'Nasdaq Composite' },
-  { kind: 'etf', t: 'BNO', label: 'Brent oil' },
-  { kind: 'etf', t: 'USO', label: 'US oil (WTI)' },
-  { kind: 'etf', t: 'GLD', label: 'Gold' },
-  { kind: 'yield', t: 'DGS10', label: 'US 10-yr yield' },
-  { kind: 'yield', t: 'DGS30', label: 'US 30-yr yield' },
-] as const;
+/**
+ * Global markets strip. Indices use real index levels: FMP (live) first, then FRED (official daily close); the S&P 100
+ * level isn't available on either free plan, so it falls back to its ETF (OEF) and says so. Commodities use ETF proxies
+ * (no free futures/spot feed); Treasury yields come from FRED.
+ */
+type Market =
+  | { kind: 'index'; label: string; fmp?: string; fred?: string; etf: string }
+  | { kind: 'etf'; label: string; t: string }
+  | { kind: 'yield'; label: string; t: string };
+export const GLOBAL_MARKETS: Market[] = [
+  { kind: 'index', label: 'S&P 500', fmp: '^GSPC', fred: 'SP500', etf: 'SPY' },
+  { kind: 'index', label: 'S&P 100', etf: 'OEF' },
+  { kind: 'index', label: 'Nasdaq Composite', fmp: '^IXIC', fred: 'NASDAQCOM', etf: 'ONEQ' },
+  { kind: 'index', label: 'Nasdaq 100', fmp: '^NDX', fred: 'NASDAQ100', etf: 'QQQ' },
+  { kind: 'index', label: 'Dow Jones Industrial Avg', fmp: '^DJI', fred: 'DJIA', etf: 'DIA' },
+  { kind: 'etf', label: 'Brent oil', t: 'BNO' },
+  { kind: 'etf', label: 'US oil (WTI)', t: 'USO' },
+  { kind: 'etf', label: 'Gold', t: 'GLD' },
+  { kind: 'yield', label: 'US 10-yr yield', t: 'DGS10' },
+  { kind: 'yield', label: 'US 30-yr yield', t: 'DGS30' },
+];
 
 function SectionTitle({ icon: Icon, children, action }: { icon: typeof Star; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -39,52 +48,74 @@ function SectionTitle({ icon: Icon, children, action }: { icon: typeof Star; chi
   );
 }
 
-/** Global markets strip: index/commodity ETF proxies + Treasury yields. */
+interface Tile { label: string; code: string; value: string | null; changePct?: number; changeText?: string; note: string; href?: string; noteUrl?: string }
+
+/** Global markets strip: real index levels, commodity ETF proxies and Treasury yields. */
 export async function MarketPulse() {
-  const etfs = GLOBAL_MARKETS.filter((m) => m.kind === 'etf').map((m) => m.t);
-  const [q, ...yields] = await Promise.all([getMarketData().getQuotes(etfs), ...GLOBAL_MARKETS.filter((m) => m.kind === 'yield').map((m) => fredLatest(m.t))]);
+  const etfs = Array.from(new Set(GLOBAL_MARKETS.flatMap((m) => (m.kind === 'etf' ? [m.t] : m.kind === 'index' ? [m.etf] : []))));
+  const [q, tiles] = await Promise.all([
+    getMarketData().getQuotes(etfs),
+    Promise.all(GLOBAL_MARKETS.map(async (m): Promise<Tile | null> => {
+      if (m.kind === 'yield') {
+        const y = await fredLatest(m.t);
+        if (!y) return { label: m.label, code: m.t, value: null, note: 'FRED unavailable' };
+        const bp = Math.round(y.change * 100);
+        return { label: m.label, code: m.t, value: `${y.value.toFixed(2)}%`, changeText: `${bp > 0 ? '+' : ''}${bp} bp`, changePct: bp, note: `FRED close ${shortDate(y.date)}`, noteUrl: `https://fred.stlouisfed.org/series/${m.t}` };
+      }
+      if (m.kind === 'index') {
+        const live = m.fmp ? await getIndexQuote(m.fmp) : null;
+        if (live) return { label: m.label, code: m.fmp!, value: fmt.price(live.price), changePct: live.changePct, changeText: `${live.change > 0 ? '+' : ''}${fmt.price(live.change)}`, note: 'Index · FMP live', href: `/company/${m.etf}`, noteUrl: FMP_SITE };
+        const close = m.fred ? await fredLatest(m.fred) : null;
+        if (close) {
+          const pct = close.value - close.change ? (close.change / (close.value - close.change)) * 100 : 0;
+          return { label: m.label, code: m.fred!, value: fmt.price(close.value), changePct: pct, changeText: `${close.change > 0 ? '+' : ''}${fmt.price(close.change)}`, note: `Index · FRED close ${shortDate(close.date)}`, href: `/company/${m.etf}`, noteUrl: `https://fred.stlouisfed.org/series/${m.fred}` };
+        }
+        return null; // filled from the ETF quote below
+      }
+      return null;
+    })),
+  ]);
   const by = Object.fromEntries(q.data.map((x) => [x.ticker, x]));
-  const ys = Object.fromEntries(yields.filter((y): y is Yield => !!y).map((y) => [y.series, y]));
-  const tile = 'group rounded-xl border border-border bg-panel p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-info/40 hover:shadow-lg hover:shadow-black/20';
+  const cards: Tile[] = GLOBAL_MARKETS.map((m, i) => {
+    if (tiles[i]) return tiles[i]!;
+    const t = m.kind === 'index' ? m.etf : m.kind === 'etf' ? m.t : '';
+    const x: Quote | undefined = by[t];
+    return { label: m.label, code: t, value: x ? fmt.price(x.price) : null, changePct: x?.changePct, changeText: x ? `${x.change > 0 ? '+' : ''}${fmt.price(x.change)}` : undefined, note: m.kind === 'index' ? `${t} ETF (index level needs a paid feed)` : 'ETF proxy', href: `/company/${t}` };
+  });
+  const tile = 'group block rounded-xl border border-border bg-panel p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-info/40 hover:shadow-lg hover:shadow-black/20';
   return (
     <section aria-labelledby="gm-h" className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="gm-h" className="eyebrow">Global markets</h2>
-        <span className="text-[11px] text-muted">ETF proxies via {q.meta.provider || 'market data'} · yields via FRED · {new Date(q.meta.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+        <span className="text-[11px] text-muted">Indices via <a href={FMP_SITE} target="_blank" rel="noopener noreferrer" className="hover:text-info hover:underline">FMP</a> / <a href="https://fred.stlouisfed.org" target="_blank" rel="noopener noreferrer" className="hover:text-info hover:underline">FRED</a> · ETFs via {q.meta.provider || 'market data'} · {new Date(q.meta.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {GLOBAL_MARKETS.map((m) => {
-          if (m.kind === 'yield') {
-            const y = ys[m.t];
-            const bp = y ? Math.round(y.change * 100) : 0;
-            return (
-              <div key={m.t} className={tile}>
-                <div className="flex items-baseline justify-between gap-2 text-xs text-muted"><span className="font-medium text-text">{m.label}</span><span className="font-mono text-[10px]">{m.t}</span></div>
-                <div className="mt-2 flex items-baseline justify-between gap-2">
-                  <span className="font-mono text-xl font-semibold tabular-nums">{y ? `${y.value.toFixed(2)}%` : '—'}</span>
-                  {y ? <span className={cn('font-mono text-xs tabular-nums', bp > 0 ? 'text-up' : bp < 0 ? 'text-down' : 'text-muted')}>{bp > 0 ? '+' : ''}{bp} bp</span> : <span className="text-[11px] text-muted">unavailable</span>}
-                </div>
-                <div className="mt-1 text-[11px] text-muted">{y ? `FRED close ${new Date(y.date + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}` : 'Add FRED_API_KEY'}</div>
+        {cards.map((c) => {
+          const body = (
+            <>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                <span className="truncate font-medium text-text" title={c.label}>{c.label}</span>
+                <span className="shrink-0 font-mono text-[10px]">{c.code}</span>
               </div>
-            );
-          }
-          const x: Quote | undefined = by[m.t];
-          return (
-            <Link key={m.t} href={`/company/${m.t}`} className={cn(tile, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info')}>
-              <div className="flex items-center justify-between gap-2 text-xs text-muted"><span className="flex items-center gap-2 font-medium text-text"><CompanyLogo ticker={m.t} size={20} className="rounded-md" />{m.label}</span><span className="font-mono text-[10px]">{m.t}</span></div>
               <div className="mt-2 flex items-baseline justify-between gap-2">
-                <span className="font-mono text-xl font-semibold tabular-nums">{x ? fmt.price(x.price) : '—'}</span>
-                {x ? <Delta value={x.changePct} className="text-xs" /> : <span className="text-[11px] text-muted">no quote</span>}
+                <span className="font-mono text-xl font-semibold tabular-nums">{c.value ?? '—'}</span>
+                {c.changePct == null ? <span className="text-[11px] text-muted">no quote</span>
+                  : c.changeText?.endsWith('bp') ? <span className={cn('font-mono text-xs tabular-nums', c.changePct > 0 ? 'text-up' : c.changePct < 0 ? 'text-down' : 'text-muted')}>{c.changeText}</span>
+                  : <Delta value={c.changePct} className="text-xs" />}
               </div>
-              <div className="mt-1 font-mono text-[11px] tabular-nums text-muted">{x ? `${x.change > 0 ? '+' : ''}${fmt.price(x.change)} · ETF proxy` : 'ETF proxy'}</div>
-            </Link>
+              <div className="mt-1 truncate font-mono text-[11px] tabular-nums text-muted" title={c.note}>{c.changeText && !c.changeText.endsWith('bp') ? `${c.changeText} · ` : ''}{c.note}</div>
+            </>
           );
+          return c.href
+            ? <Link key={c.label} href={c.href} className={cn(tile, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info')}>{body}</Link>
+            : <div key={c.label} className={tile}>{body}</div>;
         })}
       </div>
-      <MockBanner isMock={q.meta.isMock} provider={q.meta.provider} />
     </section>
   );
 }
+
+const shortDate = (d: string) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 /** Watchlist movers sorted by absolute % change. */
 export async function WatchlistMovers({ symbols }: { symbols: string[] }) {

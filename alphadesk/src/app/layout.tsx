@@ -5,10 +5,10 @@ import '@fontsource/jetbrains-mono/600.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'NidhikshDesk', template: '%s · NidhikshDesk' },
+  title: { default: 'Nidhiksh Pulse', template: '%s · Nidhiksh Pulse' },
   description: 'Research and decision platform for PMs and equity analysts. Research only — not investment advice.',
   icons: { icon: '/nidhiksh-logo.png', apple: '/nidhiksh-logo.png' },
-  applicationName: 'NidhikshDesk',
+  applicationName: 'Nidhiksh Pulse',
 };
 
 export const viewport: Viewport = { themeColor: '#0b0d10', width: 'device-width', initialScale: 1 };
