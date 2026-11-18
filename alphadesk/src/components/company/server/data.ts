@@ -1,5 +1,6 @@
 import 'server-only';
 import { getMarketData } from '@/lib/data';
+import { getAnalystView } from '@/lib/data/fmp';
 import type {
   Bar, Catalyst, DataMeta, Estimates, Filing, Financials, InsiderTxn, InstitutionalHolding, NewsItem, Profile, Quote, SourceRef,
 } from '@/lib/data/types';
@@ -143,9 +144,24 @@ export async function loadFinancials(ticker: string, cik?: string): Promise<Fina
 
 export interface EstimatesData { estimates: Estimates | null; source: SourceRef | null; meta: SectionMeta }
 export async function loadEstimates(ticker: string): Promise<EstimatesData> {
-  const e = await md().getEstimates(ticker);
+  const [e, fmp] = await Promise.all([md().getEstimates(ticker), getAnalystView(ticker)]);
   const s = e.meta.source.find((x) => x.kind === 'estimate') ?? e.meta.source[0] ?? null;
-  return { estimates: e.data, source: s ? { ...s, kind: e.meta.isMock ? 'mock' : s.kind } : null, meta: combineMeta(e.meta) };
+  let estimates = e.data;
+  // Ratings, targets and grade changes come from FMP when configured (consensus EPS/revenue stay with the estimates provider).
+  if (fmp) {
+    const base: Estimates = estimates ?? { ticker, rating: { buy: 0, hold: 0, sell: 0 }, priceTarget: { mean: 0, high: 0, low: 0 }, periods: [] };
+    estimates = {
+      ...base,
+      rating: fmp.rating ?? base.rating,
+      priceTarget: fmp.priceTarget ? { mean: fmp.priceTarget.mean, high: fmp.priceTarget.high, low: fmp.priceTarget.low } : base.priceTarget,
+      priceTargetMedian: fmp.priceTarget?.median,
+      analystActions: fmp.actions,
+      analystSource: { name: fmp.source.name, url: fmp.source.url, asOf: fmp.asOf },
+    };
+  }
+  const providers = combineMeta(e.meta);
+  if (fmp && !providers.providers.includes('FMP')) providers.providers.push('FMP');
+  return { estimates, source: s ? { ...s, kind: e.meta.isMock ? 'mock' : s.kind } : null, meta: providers };
 }
 
 export interface OwnershipData { insiders: InsiderTxn[]; institutional: InstitutionalHolding[]; insiderSource: SourceRef | null; instSource: SourceRef | null; meta: SectionMeta; insiderMock: boolean; instMock: boolean }

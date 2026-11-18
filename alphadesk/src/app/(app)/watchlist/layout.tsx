@@ -11,7 +11,9 @@ export default async function WatchlistLayout({ children }: { children: React.Re
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <WatchlistPane symbols={wl?.symbols ?? []} />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        {children}
+      </div>
     </div>
   );
 }

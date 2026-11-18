@@ -118,7 +118,7 @@ export async function WatchlistMovers({ symbols }: { symbols: string[] }) {
             </li>
           ))}
         </ul>
-        <p className="text-[11px] text-muted">Sorted by today&apos;s move · line = last month{rows.length < symbols.length ? ` · no quote for ${symbols.filter((s) => !q.data.some((r) => r.ticker === s)).join(', ')}` : ''}</p>
+        <p className="text-[11px] text-muted">Quotes via {q.meta.provider || 'market data'} · sorted by today&apos;s move · line = last month{rows.length < symbols.length ? ` · no quote for ${symbols.filter((s) => !q.data.some((r) => r.ticker === s)).join(', ')}` : ''}</p>
       </CardContent>
     </Card>
   );
@@ -163,7 +163,10 @@ export async function UpcomingCatalysts({ symbols }: { symbols: string[] }) {
                   {c.ticker ? <CompanyLogo ticker={c.ticker} size={24} /> : <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-panel-2"><Icon className={cn('h-3.5 w-3.5', CAT_TONE[c.category] ?? 'text-muted')} aria-hidden /></span>}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium" title={c.detail ?? c.title}>{c.title}</span>
-                    {c.time && <span className="block text-[11px] text-muted">{c.time}{c.estimated ? ' · estimated' : ''}</span>}
+                    <span className="block text-[11px] text-muted">
+                      {c.time ? `${c.time} · ` : ''}{c.estimated ? 'estimated · ' : ''}
+                      {c.source.url ? <a href={c.source.url} target="_blank" rel="noopener noreferrer" className="hover:text-info hover:underline">{c.source.name}</a> : c.source.name}
+                    </span>
                   </span>
                   <span className="whitespace-nowrap text-right font-mono text-xs tabular-nums text-muted">
                     {new Date(c.date + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
@@ -222,6 +225,9 @@ export async function TopNews({ symbols }: { symbols: string[] }) {
                 </li>
               ))}
             </ul>
+            <p className="border-t border-border pt-3 text-[11px] text-muted">
+              Headlines from {Array.from(new Set(merged.map((n) => n.publisher))).join(', ')} via publisher RSS, Google News and Massive · each headline opens the original article · refreshed every 5 min.
+            </p>
           </>
         ) : (
           <EmptyState icon={Newspaper} title="No news right now" description="Headlines for your watchlist and the broad market will appear here." />

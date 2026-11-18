@@ -189,6 +189,9 @@ export interface Estimates {
   forwardBasis?: string;
   /** Individual analyst actions (needs a ratings feed such as Benzinga via Massive, or FMP). Newest first. */
   analystActions?: AnalystAction[];
+  /** Where ratings / targets / actions came from (e.g. Financial Modeling Prep) and when. */
+  analystSource?: { name: string; url?: string; asOf: string };
+  priceTargetMedian?: number;
 }
 
 export interface AnalystAction {
@@ -197,6 +200,7 @@ export interface AnalystAction {
   rating: 'buy' | 'hold' | 'sell';
   /** Rating as published, e.g. 'Overweight'. */
   ratingLabel?: string;
+  previousLabel?: string;
   action: 'upgraded' | 'downgraded' | 'maintained' | 'initiated' | 'reiterated' | 'target-raised' | 'target-lowered';
   priceTarget?: number;
   date: string;

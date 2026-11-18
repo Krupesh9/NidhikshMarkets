@@ -1,6 +1,6 @@
 'use client';
 import * as React from 'react';
-import { Users } from 'lucide-react';
+import { ExternalLink, Users } from 'lucide-react';
 import type { Estimates } from '@/lib/data/types';
 import { cn, fmt } from '@/lib/utils';
 
@@ -38,7 +38,7 @@ function RatingsCard({ e, ticker }: { e: Estimates; ticker: string }) {
       <h3 id="ar-h" className="text-[15px] font-semibold">Analyst ratings</h3>
       {total === 0 ? <div className="mt-4"><NeedsFeed what="Buy / hold / sell ratings" /></div> : (
         <>
-          <p className="mt-1 text-xs text-muted">Based on {total} analysts rating {ticker}.</p>
+          <p className="mt-1 text-xs text-muted">Based on {total} analysts currently rating {ticker} (strong buy counted as buy, strong sell as sell).</p>
           <div className="mt-5 flex flex-wrap items-center gap-8">
             <figure className="flex flex-col items-center gap-2">
               <svg width={132} height={132} viewBox="0 0 132 132" role="img" aria-label={`${buy} buy, ${hold} hold, ${sell} sell`}>
@@ -73,7 +73,7 @@ function RatingsCard({ e, ticker }: { e: Estimates; ticker: string }) {
 /** Highest / average / lowest 12-month targets as bars, with the current price marked. */
 function ForecastCard({ e, ticker, price }: { e: Estimates; ticker: string; price: number | null }) {
   const { high, mean, low } = e.priceTarget;
-  const rows = [{ k: 'Highest', v: high }, { k: 'Average', v: mean }, { k: 'Lowest', v: low }].filter((x) => x.v > 0);
+  const rows = [{ k: 'Highest', v: high }, { k: 'Average', v: mean }, { k: 'Median', v: e.priceTargetMedian ?? 0 }, { k: 'Lowest', v: low }].filter((x) => x.v > 0);
   const max = Math.max(...rows.map((x) => x.v), price ?? 0) * 1.05;
   const pct = (v: number) => (price ? ((v - price) / price) * 100 : null);
   return (
@@ -81,7 +81,7 @@ function ForecastCard({ e, ticker, price }: { e: Estimates; ticker: string; pric
       <h3 id="fc-h" className="text-[15px] font-semibold">12-month forecast</h3>
       {!rows.length ? <div className="mt-4"><NeedsFeed what="Price targets" /></div> : (
         <>
-          <p className="mt-1 text-xs text-muted">Analyst 12-month price targets for {ticker}{rows.length < 3 ? ' (high/low need a ratings feed)' : ''}.</p>
+          <p className="mt-1 text-xs text-muted">Analyst 12-month price targets for {ticker}{rows.length < 3 ? ' (high/low need a ratings feed)' : ' (consensus across covering analysts)'}.</p>
           <div className="relative mt-6 space-y-3">
             {price != null && (
               <div className="pointer-events-none absolute inset-y-0 left-[84px] right-0" aria-hidden>
@@ -116,13 +116,16 @@ function ForecastCard({ e, ticker, price }: { e: Estimates; ticker: string; pric
 function ActionsTable({ e, price }: { e: Estimates; price: number | null }) {
   const rows = e.analystActions ?? [];
   if (!rows.length) return <NeedsFeed what="Analyst-by-analyst actions" />;
+  const hasPt = rows.some((r) => r.priceTarget);
+  const heads = ['Firm / analyst', 'Recommendation', 'Action', ...(hasPt ? ['Price target', 'Projected'] : []), 'Date', 'Coverage'];
+  const right = new Set(['Price target', 'Projected', 'Coverage']);
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-sm">
         <caption className="sr-only">Recent analyst rating actions</caption>
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-border">
-            {['Analyst', 'Recommendation', 'Action', 'Price target', 'Projected', 'Date'].map((h, i) => <th key={h} scope="col" className={cn('px-3 py-2.5 font-medium', i >= 3 && i <= 4 && 'text-right')}>{h}</th>)}
+            {heads.map((h) => <th key={h} scope="col" className={cn('px-3 py-2.5 font-medium', right.has(h) && 'text-right')}>{h}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -131,11 +134,17 @@ function ActionsTable({ e, price }: { e: Estimates; price: number | null }) {
             return (
               <tr key={`${a.firm}-${a.date}-${i}`} className="border-b border-border/60 transition-colors hover:bg-panel-2/50">
                 <td className="px-3 py-3"><div className="font-medium">{a.analyst ?? a.firm}</div>{a.analyst && <div className="text-xs text-muted">{a.firm}</div>}</td>
-                <td className="px-3 py-3"><span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', RATING[a.rating].chip)} title={a.ratingLabel}>{a.ratingLabel ?? RATING[a.rating].label}</span></td>
-                <td className="px-3 py-3 text-muted">{ACTION_LABEL[a.action]}</td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">{a.priceTarget ? `$${fmt.price(a.priceTarget)}` : '–'}</td>
-                <td className={cn('px-3 py-3 text-right font-mono tabular-nums', d == null ? 'text-muted' : d >= 0 ? 'text-up' : 'text-down')}>{d == null ? '–' : `${d >= 0 ? '+' : ''}${d.toFixed(1)}%`}</td>
+                <td className="px-3 py-3">
+                  {a.previousLabel && <span className="mr-1.5 text-xs text-muted" title="Previous rating">{a.previousLabel} →</span>}
+                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', RATING[a.rating].chip)}>{a.ratingLabel ?? RATING[a.rating].label}</span>
+                </td>
+                <td className={cn('px-3 py-3', a.action === 'upgraded' ? 'text-up' : a.action === 'downgraded' ? 'text-down' : 'text-muted')}>{ACTION_LABEL[a.action]}</td>
+                {hasPt && <td className="px-3 py-3 text-right font-mono tabular-nums">{a.priceTarget ? `$${fmt.price(a.priceTarget)}` : '–'}</td>}
+                {hasPt && <td className={cn('px-3 py-3 text-right font-mono tabular-nums', d == null ? 'text-muted' : d >= 0 ? 'text-up' : 'text-down')}>{d == null ? '–' : `${d >= 0 ? '+' : ''}${d.toFixed(1)}%`}</td>}
                 <td className="px-3 py-3 font-mono text-xs tabular-nums text-muted">{fmt.date(a.date)}</td>
+                <td className="px-3 py-3 text-right">
+                  {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-info hover:underline">News <ExternalLink className="h-3 w-3" aria-hidden /></a> : <span className="text-muted">–</span>}
+                </td>
               </tr>
             );
           })}
@@ -154,6 +163,13 @@ export function AnalystOverview({ ticker, estimates, price }: { ticker: string; 
         <ForecastCard e={estimates} ticker={ticker} price={price} />
       </div>
       <ActionsTable e={estimates} price={price} />
+      {estimates.analystSource && (
+        <p className="text-[11px] text-muted">
+          Ratings, price targets and rating changes:{' '}
+          {estimates.analystSource.url ? <a href={estimates.analystSource.url} target="_blank" rel="noopener noreferrer" className="text-info hover:underline">{estimates.analystSource.name}</a> : estimates.analystSource.name}
+          {' '}· as of {new Date(estimates.analystSource.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} · refreshed every 10 min. “News” searches coverage of each call. Research only, not investment advice.
+        </p>
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { sanitizeTicker } from '@/lib/sanitize';
 import { assertFeature } from '@/lib/plans';
 import { getMarketData } from '@/lib/data';
 import { EmptyState } from '@/components/ui/empty-state';
+import { AutoRefresh } from '@/components/shell/AutoRefresh';
 import { CompanyHeader } from '@/components/company/CompanyHeader';
 import { DeepDiveLimitCard } from '@/components/company/DeepDiveLimitCard';
 import { SectionSkeleton } from '@/components/company/SectionCard';
@@ -63,6 +64,7 @@ export default async function CompanyPage({ params }: { params: { ticker: string
       <Suspense fallback={null}>
         <PageMockBanner ticker={ticker} cik={cik} includeBody={allowed} />
       </Suspense>
+      <div className="-mb-3 flex justify-end"><AutoRefresh everyMs={5 * 60_000} /></div>
       <CompanyHeader core={core} canShare={assertFeature(user, 'sharing').allowed} />
       {!allowed ? (
         <DeepDiveLimitCard gate={dd.gate} ticker={ticker} />

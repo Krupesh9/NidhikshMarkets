@@ -4,6 +4,7 @@ import { screenRepo } from '@/lib/repos';
 import { getCalendarEvents } from '@/lib/calendar';
 import { addDays, startOfWeek, todayET } from '@/lib/calendar/dates';
 import { PageHeader } from '@/components/shell/PageHeader';
+import { AutoRefresh } from '@/components/shell/AutoRefresh';
 import { CalendarView } from '@/components/calendar/CalendarView';
 
 export const metadata: Metadata = { title: 'Calendar' };
@@ -25,6 +26,7 @@ export default async function CalendarPage() {
       <PageHeader
         title="Calendar"
         description="Earnings for your watchlist plus the macro dates that move markets: inflation, jobs, the Fed and growth — next 90 days."
+        actions={<AutoRefresh everyMs={10 * 60_000} />}
       />
       <CalendarView events={events} today={meta.today} watchlist={watchlist} sources={meta.sources} />
     </div>
