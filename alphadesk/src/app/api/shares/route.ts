@@ -4,6 +4,7 @@ import { shareRepo, type ShareItemType as ShareRepoItemType } from '@/lib/repos'
 import { db } from '@/lib/db';
 import { audit } from '@/lib/audit';
 import { sanitizeText } from '@/lib/sanitize';
+import { redactSnapshot } from '@/components/sharing/redact';
 import { createShareSchema, normalizeSnapshot, shareGate, snapshotPreview, snapshotTooLarge, ITEM_LABEL, SHARE_ITEM_TYPES } from '@/components/sharing/snapshot';
 import { buildBaseSnapshot } from '@/components/sharing/server';
 
@@ -21,7 +22,7 @@ export const GET = withApi(
       .map((s) => ({
         id: s.id, token: s.token, itemType: s.itemType, itemId: s.itemId, title: s.title, visibility: s.visibility, createdAt: s.createdAt,
         createdById: s.createdById, createdByName: s.createdByName ?? 'Unknown', commentCount: (s as typeof s & { commentCount?: number }).commentCount ?? 0,
-        url: `/shared/${s.token}`, preview: snapshotPreview(s.itemType, s.snapshot), isMock: s.snapshot.isMock === true, capturedAt: typeof s.snapshot.capturedAt === 'string' ? s.snapshot.capturedAt : null,
+        url: `/shared/${s.token}`, preview: snapshotPreview(s.itemType, redactSnapshot(s.itemType, s.snapshot, user)), isMock: s.snapshot.isMock === true, capturedAt: typeof s.snapshot.capturedAt === 'string' ? s.snapshot.capturedAt : null,
       }));
     return { items };
   },

@@ -19,9 +19,9 @@ vi.mock('@/lib/db', () => {
 });
 
 import { decrypt, encrypt, mask } from '@/lib/crypto';
-import { assertFeature, checkLimit, PLAN_INFO } from '@/lib/plans';
+import { assertFeature, checkLimit, normalizePlan, PLAN_INFO, PLANS } from '@/lib/plans';
 import { deleteKey, listKeys, resolveKey, saveKey, testProviderKey } from '../keys.server';
-import { nextResetDate, planChangeSummary, priceLabel, savingsLabel, usageFraction, yearlySavings } from '../billing';
+import { nextResetDate, planChangeSummary, planComparisonRows, priceLabel, usageFraction } from '../billing';
 import { shareGate } from '@/components/sharing/snapshot';
 
 const user = { id: 'u1', orgId: 'o1' };
@@ -90,42 +90,36 @@ describe('API key encryption + masking', () => {
   });
 });
 
-describe('plan pricing', () => {
-  it('computes yearly savings from plan constants (Pro $100, Pro Plus $200)', () => {
-    expect(yearlySavings('FREE')).toBe(0);
-    expect(yearlySavings('PRO')).toBe(PLAN_INFO.PRO.priceMonthly * 12 - PLAN_INFO.PRO.priceYearly);
-    expect(yearlySavings('PRO')).toBe(100);
-    expect(yearlySavings('PRO_PLUS')).toBe(200);
-    expect(savingsLabel('PRO')).toBe('save $100');
-    expect(savingsLabel('FREE')).toBeNull();
-    expect(priceLabel('PRO', 'monthly')).toBe('$50/mo');
-    expect(priceLabel('PRO_PLUS', 'yearly')).toBe('$1,000/yr');
+describe('plan pricing (two plans)', () => {
+  it('Free is $0, Pro is $100/mo; legacy PRO normalises to the paid plan', () => {
+    expect(PLANS).toEqual(['FREE', 'PRO_PLUS']);
+    expect(priceLabel('FREE')).toBe('$0');
+    expect(priceLabel('PRO_PLUS')).toBe('$100/mo');
+    expect(PLAN_INFO.PRO_PLUS.label).toBe('Pro');
+    expect(normalizePlan('PRO')).toBe('PRO_PLUS');
+    expect(normalizePlan('bogus')).toBe('FREE');
+  });
+  it('comparison table has a value for both plans on every row', () => {
+    for (const r of planComparisonRows()) { expect(r.values.FREE).toBeDefined(); expect(r.values.PRO_PLUS).toBeDefined(); }
   });
 });
 
-describe('plan toggle effects', () => {
-  it('FREE → PRO unlocks AI (100/mo) and sharing, not baskets or team', () => {
+describe('plan effects', () => {
+  it('FREE has no AI, sharing or team; Pro has all of them', () => {
     expect(assertFeature({ plan: 'FREE' }, 'ai').allowed).toBe(false);
-    expect(assertFeature({ plan: 'PRO' }, 'ai').allowed).toBe(true);
-    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 99).allowed).toBe(true);
-    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 100).allowed).toBe(false);
-    expect(shareGate({ plan: 'PRO' }, 'note').allowed).toBe(true);
-    expect(shareGate({ plan: 'PRO' }, 'basket').allowed).toBe(false);
-    expect(assertFeature({ plan: 'PRO' }, 'team').allowed).toBe(false);
-    expect(planChangeSummary('FREE', 'PRO')).toEqual(['AI queries: 0 → 100 / month', 'Positions: 5 → 50', 'Sharing unlocked']);
-  });
-  it('PRO → PRO_PLUS unlocks unlimited AI, basket sharing and 5 seats', () => {
+    expect(assertFeature({ plan: 'FREE' }, 'ai').upgradeTo).toBe('PRO_PLUS');
+    expect(shareGate({ plan: 'FREE' }, 'note').allowed).toBe(false);
+    expect(assertFeature({ plan: 'PRO_PLUS' }, 'ai').allowed).toBe(true);
+    expect(assertFeature({ plan: 'PRO' }, 'team').allowed).toBe(true);
     expect(checkLimit({ plan: 'PRO_PLUS' }, 'aiQueriesPerMonth', 10_000).allowed).toBe(true);
     expect(shareGate({ plan: 'PRO_PLUS' }, 'basket').allowed).toBe(true);
     expect(checkLimit({ plan: 'PRO_PLUS' }, 'seats', 4).allowed).toBe(true);
     expect(checkLimit({ plan: 'PRO_PLUS' }, 'seats', 5).allowed).toBe(false);
-    expect(planChangeSummary('PRO', 'PRO_PLUS')).toContain('Basket sharing unlocked');
-    expect(planChangeSummary('PRO', 'PRO_PLUS')).toContain('Team seats: 5');
   });
-  it('downgrade to FREE re-locks sharing and lists what is lost', () => {
-    expect(shareGate({ plan: 'FREE' }, 'note').allowed).toBe(false);
-    expect(planChangeSummary('PRO_PLUS', 'FREE')).toEqual(expect.arrayContaining(['Sharing disabled (existing shares stay visible)', 'Team management disabled']));
-    expect(planChangeSummary('PRO', 'PRO')).toEqual([]);
+  it('change summary', () => {
+    expect(planChangeSummary('FREE', 'PRO_PLUS')[0]).toMatch(/unlocked/);
+    expect(planChangeSummary('PRO_PLUS', 'FREE')[0]).toMatch(/locked/);
+    expect(planChangeSummary('FREE', 'FREE')).toEqual([]);
   });
   it('usage meter math + monthly reset', () => {
     expect(usageFraction(37, 100)).toBeCloseTo(0.37);

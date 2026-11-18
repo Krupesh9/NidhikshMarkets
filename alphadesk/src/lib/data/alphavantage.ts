@@ -5,6 +5,7 @@ import type { EstimatePeriod, Estimates, PartialProvider, SourceRef, WithMeta } 
 import { fiscalYearLabel } from './secFinancials';
 import { log } from '../log';
 import { cacheDir } from '../cache-dir';
+import { meteredFetch, recordLimitError } from '../usage-meter';
 
 /**
  * Alpha Vantage adapter — analyst consensus (EARNINGS_ESTIMATES) and, on premium keys, OVERVIEW
@@ -65,7 +66,7 @@ async function av(fn: 'OVERVIEW' | 'EARNINGS_ESTIMATES', symbol: string): Promis
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     lastCall = Date.now();
     const url = `https://www.alphavantage.co/query?function=${fn}&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(process.env.ALPHA_VANTAGE_API_KEY ?? '')}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
+    const res = await meteredFetch('alphavantage', url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
     if (!res.ok) throw new Error(`alphavantage: HTTP ${res.status}`);
     return (await res.json()) as Record<string, unknown>;
   };
@@ -80,6 +81,7 @@ async function av(fn: 'OVERVIEW' | 'EARNINGS_ESTIMATES', symbol: string): Promis
   }
   if (info) {
     log.warn('alphavantage.rate_limited', { fn, symbol });
+    recordLimitError('alphavantage', { status: 200, endpoint: `www.alphavantage.co/query (${fn})`, message: 'rate limit notice' });
     backoffUntil = Date.now() + 3600_000;
     return null;
   }

@@ -17,6 +17,7 @@ provider. Real data and real AI switch on when you add keys.
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - Rules for contributors and agents: [`docs/BUILD_CONTRACT.md`](docs/BUILD_CONTRACT.md)
+- **Deploying to production (Vercel + Supabase/Neon), env vars, data import, rollback: [`docs/DEPLOY.md`](docs/DEPLOY.md)**
 
 ---
 
@@ -42,12 +43,14 @@ openssl rand -base64 32   # ENCRYPTION_KEY (must decode to exactly 32 bytes)
 ### Demo logins
 
 Sign-in uses a dev "magic link": enter a seeded email on `/login` and you're signed in. The simulated link is
-written to the server console. No email is sent.
+written to the server console. No email is sent. Demo login is **off in production** (`NODE_ENV=production`)
+unless `ALLOW_DEMO_LOGIN=1`; production uses the owner email + password (`PULSE_OWNER_EMAIL` / `PULSE_OWNER_PASSWORD`)
+and optional Google sign-in.
 
 | Email | Name | Role | Plan |
 |---|---|---|---|
-| `pm@nidhikshdesk.dev` | Priya Mehta | ADMIN | **Pro Plus** |
-| `analyst@nidhikshdesk.dev` | Alex Chen | ANALYST | **Pro** |
+| `pm@nidhikshdesk.dev` | Priya Mehta | ADMIN | **Pro** |
+| `analyst@nidhikshdesk.dev` | Alex Chen | ANALYST | **Pro** (stored as `PRO_PLUS`) |
 | `intern@nidhikshdesk.dev` | Jordan Lee | VIEWER | **Free** |
 
 All three belong to the seeded org **Demo Capital** (5 seats). The seed also creates watchlists, two portfolios
@@ -85,6 +88,13 @@ Every provider key is optional. If a key is missing, the app uses local or mock 
 | `GEMINI_API_KEY` | no | Gemini provider for AI research. |
 | `GEMINI_MODEL` | no | Default `gemini-2.5-pro`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | Turns on Google sign-in. The `/login` button only appears when both are set. New Google users join the first org as VIEWER on Free. |
+| `PULSE_OWNER_EMAIL` / `PULSE_OWNER_PASSWORD` | prod: **yes** | Owner sign-in (email + password). First sign-in creates the org and an ADMIN user on Pro. Upgrade requests are emailed to this address. `PULSE_OWNER_NAME` sets the display name. |
+| `ALLOW_MOCK_DATA` | no | Mock data fallback. Default **on** in development, **off** when `NODE_ENV=production` unless set to `1`. When off, sections without real data show empty states. |
+| `ALLOW_DEMO_LOGIN` | no | `1` enables the email-only demo login in production. Never set this on a public deployment. |
+| `TRUST_PROXY` | no | `1` trusts `X-Forwarded-For` for rate limiting (set on Vercel). |
+| `FMP_API_KEY` / `FMP_DAILY_LIMIT` | no | Financial Modeling Prep analyst ratings, price targets, analyst actions (daily call budget, default 240). |
+| `FRED_API_KEY` | no | FRED macro release dates and Treasury yields. |
+| `DIRECT_URL` / `PULSE_DB_SCHEMA` | prod | Direct Postgres URL for schema changes; Postgres schema for Pulse tables (default `pulse`). See [`docs/DEPLOY.md`](docs/DEPLOY.md). |
 
 Users can also save their own Anthropic/Gemini keys in **Settings → AI keys**. These are stored encrypted per user and
 take precedence over env keys. If neither is available, the **Mock AI provider** answers with realistic canned
@@ -105,7 +115,8 @@ providers below in order, and the first one that returns non-empty data wins:
 4. **SEC EDGAR**: live filings, and financial statements mapped from XBRL company facts (falls back to the SEC facts in
    the Nidhiksh cache) when `SEC_USER_AGENT` is set.
 5. **Alpha Vantage**: consensus estimates when `ALPHA_VANTAGE_API_KEY` is set.
-6. **Mock**: a deterministic, seeded 50-stock universe across all 11 GICS sectors. It also synthesises intraday bars.
+6. **Mock**: a deterministic, seeded 50-stock universe across all 11 GICS sectors. It also synthesises intraday bars. **Only when `mockAllowed()`** (`src/lib/data/mock-policy.ts`): on in development, off in production unless
+   `ALLOW_MOCK_DATA=1`. With mock off, missing data is an empty result (not labelled mock) and the UI shows an empty state.
 
 A provider that throws or returns empty data is skipped. The UI never sees an exception. If nothing has data, the
 result is `null`/`[]`, marked `isMock: true, provider: 'none'`. Every result has the shape
@@ -119,24 +130,33 @@ and are named "(simulated)".
 
 ---
 
-## Plans and mock billing
+## Plans
 
-| | Free | Pro | Pro Plus |
-|---|---|---|---|
-| Price | $0 | **$50/mo or $500/yr** | **$100/mo or $1,000/yr** |
-| AI research queries | none | 100 / month | unlimited |
-| Company deep dives | 3 / day | unlimited | unlimited |
-| Portfolio positions | 5 | 50 | unlimited |
-| Workspaces / seats | 1 / 1 | 1 / 1 | unlimited / 5 |
-| Sharing and export | no | yes | yes |
-| Custom basket sharing, priority refresh, team | no | no | yes |
+Two plans. The paid plan is stored as `PRO_PLUS`; any legacy `PRO` value (the retired $50 tier) is treated as Pro
+(`normalizePlan()` in `src/lib/plans.ts`).
 
-Gates are enforced on the server (`assertFeature`, `checkLimit` in `src/lib/plans.ts`). They return
-`{ allowed, reason, upgradeTo }`, and the UI shows an inline `<UpgradeHint/>`. It never blocks with a modal. AI usage
-is counted per user per **UTC calendar month**, and deep dives per UTC day.
+| | Free | Pro |
+|---|---|---|
+| Price | $0 | **$100 / month** |
+| Price chart | area / line, 1M–1Y | + candlesticks, 1D / 1W intraday, 5Y / MAX, SMA / EMA / MACD / RSI / crossovers |
+| Quote, market cap, P/E (TTM), EPS (TTM) | yes | yes |
+| News, filings list, earnings calendar, watchlist, home, market charts + news | yes | yes |
+| Analyst research (ratings, price targets, analyst actions, consensus, Fwd EPS / Fwd P/E) | no | yes |
+| Financial statements, EV/EBITDA | no | yes |
+| Ownership (insiders, 13F) | no | yes |
+| Index holdings, sector weights, contribution (`/markets`) | no | yes |
+| AI research assistant | no | unlimited |
+| Company deep dives | 3 / day | unlimited |
+| Portfolio positions | 5 | unlimited |
+| Sharing, export, team seats | no | yes (5 seats) |
 
-**Mock billing:** Stripe isn't wired up. **Settings → Plan** has a plan toggle (`POST /api/settings/plan`) that
-changes your plan immediately. No payment is taken, and each change is written to the audit log with `demo: true`.
+Gates are enforced **on the server**: `assertFeature` / `checkLimit` in `src/lib/plans.ts` and `requireFeature` in
+`src/lib/http.ts`, which returns `403 {error:{code:'upgrade_required'}}`. Premium data is never fetched or serialized
+for Free users. They see a locked card built from static sample content, and clicking it opens the upgrade dialog.
+The plan is read from the database on every request.
+
+**Billing:** Stripe isn't wired up. "Upgrade to Pro" emails the owner (`PULSE_OWNER_EMAIL`). An ADMIN changes users'
+plans in **Settings → Team**. There is no self-serve plan toggle in production.
 
 ---
 
@@ -197,6 +217,9 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for layers, interfaces and se
 | `npm run db:seed` | Reset and seed the demo org, users and content |
 | `npm run db:generate` | Regenerate the Prisma client |
 | `node scripts/dev-login.mjs <email> [--raw]` | Print a session cookie for curl |
+| `node scripts/export-data.mjs` | Export local SQLite workspace data to `data-export/pulse-export-<date>.json` (git-ignored; no sessions, keys or audit logs) |
+| `node scripts/import-data.mjs --file … --owner you@x.com [--dry-run] [--add-user email:PLAN:ROLE]` | Idempotent import into the `DATABASE_URL` target (Postgres or SQLite); demo users' content goes to the owner |
+| `node scripts/vercel-build.mjs` | Vercel build: Postgres schema in `pulse`, `prisma db push`, `next build` |
 | `bash tests/smoke.sh` | Smoke-test pages and APIs on a running server |
 
 ## Testing
@@ -280,7 +303,7 @@ docker compose exec app npm run db:seed
 - You can save a Massive/Polygon key in **Settings → AI keys** (stored encrypted), but the market-data chain
   (`src/lib/data/massive.ts`) currently reads only the env vars. Live data is enabled per deployment, not per user.
 - Usage resets on **UTC** month and day boundaries, not the user's local time.
-- No real billing (plan toggle only), no email delivery (the magic link is simulated) and no real-time streaming
+- No real billing (owner upgrades users in Settings → Team), no email delivery (the magic link is simulated) and no real-time streaming
   quotes. Quotes are cached for 30 seconds.
 - Mock data is illustrative. Mock financials, news, transcripts and filings are generated and labelled as such.
 - AI answers depend on the configured model. Without a key, the Mock provider returns canned synthesis.

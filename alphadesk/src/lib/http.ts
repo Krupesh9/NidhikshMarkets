@@ -1,4 +1,5 @@
 import 'server-only';
+import { canAccessSettings } from './owner';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { z } from 'zod';
 import { getSessionUser, type SessionUser } from './auth';
@@ -6,7 +7,7 @@ import { isSameOrigin } from './csrf';
 import { getLimiter } from './rate-limit';
 import { audit } from './audit';
 import { CORRELATION_HEADER, getCorrelationId, log, type Logger } from './log';
-import type { Role } from './plans';
+import { assertFeature, type Feature, type Role } from './plans';
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -17,8 +18,13 @@ export const badRequest = (m: string, d?: unknown) => new ApiError(400, 'bad_req
 export const unauthorized = (m = 'Sign in required') => new ApiError(401, 'unauthorized', m);
 export const forbidden = (m = 'Not allowed') => new ApiError(403, 'forbidden', m);
 export const notFound = (m = 'Not found') => new ApiError(404, 'not_found', m);
-/** 402-style plan gate; body includes upgradeTo for <UpgradeHint/>. */
-export const upgradeRequired = (m: string, upgradeTo?: string) => new ApiError(402, 'upgrade_required', m, { upgradeTo });
+/** Plan gate: 403 `upgrade_required`; body includes upgradeTo for <UpgradeHint/> and the upgrade dialog. */
+export const upgradeRequired = (m: string, upgradeTo?: string) => new ApiError(403, 'upgrade_required', m, { upgradeTo });
+/** Throws 403 upgrade_required unless the (DB-fresh) session user's plan includes `feature`. */
+export function requireFeature(user: { plan: string } | null | undefined, feature: Feature): void {
+  const g = assertFeature(user, feature);
+  if (!g.allowed) throw upgradeRequired(g.reason ?? 'This is a Pro feature.', g.upgradeTo);
+}
 
 export interface ApiContext<B, Q, A extends boolean> {
   req: NextRequest;
@@ -35,6 +41,8 @@ export interface WithApiOptions<B extends z.ZodTypeAny | undefined, Q extends z.
   auth?: A;
   /** allowed roles (default: any) */
   roles?: Role[];
+  /** only the owner account may call this (Settings, team, plans, keys, usage, audit) */
+  ownerOnly?: boolean;
   /** limiter preset name ('default' | 'ai' | 'auth' | 'mutation') or false. Default 'default'. Keyed per user (or IP). */
   rateLimit?: string | false;
   /** audit action name to record on success, e.g. 'ai.query'. */
@@ -70,6 +78,9 @@ export function withApi<B extends z.ZodTypeAny | undefined = undefined, Q extend
       const user = await getSessionUser();
       if (needAuth && !user) throw unauthorized();
       if (opts.roles && (!user || !opts.roles.includes(user.role))) throw forbidden('Your role cannot perform this action');
+      // Settings, team, plan, key, usage and admin endpoints are owner-only — enforced centrally by path so new routes are covered too.
+      const ownerPath = /^\/api\/(settings|team|admin)(\/|$)/.test(new URL(req.url).pathname);
+      if ((opts.ownerOnly || ownerPath) && !canAccessSettings(user)) throw forbidden('Only the owner can do this');
       if (!isSameOrigin(req)) throw forbidden('Cross-origin request blocked');
 
       if (opts.rateLimit !== false) {

@@ -11,9 +11,11 @@ import {
   PRESETS, RANGE_KEYS, type FilterKey, type FilterState, type Preset, type Range, type RangeKey,
 } from '@/lib/screener/engine';
 import type { Facets } from '@/lib/screener/types';
-import type { Plan } from '@/lib/plans';
+import { PAID_PLAN, type Plan } from '@/lib/plans';
 
-const ADDABLE: FilterKey[] = ['marketCap', 'sector', 'industry', 'country', ...RANGE_KEYS, 'insiderBuying', 'earningsWithinDays', 'catalysts'];
+const ADDABLE: FilterKey[] = ['group', 'marketCap', 'sector', 'industry', 'country', ...RANGE_KEYS, 'insiderBuying', 'earningsWithinDays', 'catalysts'];
+/** Filters on values that can be unavailable — rows with n/a values are excluded while one is active. */
+const NULLABLE_FILTERS = new Set<FilterKey>(['marketCap', ...RANGE_KEYS, 'insiderBuying']);
 
 /** Sensible default value when a filter is first added. */
 function defaultValue(k: FilterKey): FilterState[FilterKey] {
@@ -77,9 +79,9 @@ export function FilterBuilder({ filters, onChange, onPreset, facets, maxFilters,
           onChange={(e) => setQ(e.target.value)}
           onBlur={() => q !== (filters.q ?? '') && set('q', q.trim() || undefined)}
           onKeyDown={(e) => { if (e.key === 'Enter') set('q', q.trim() || undefined); }}
-          placeholder="Search ticker, name, theme…"
+          placeholder="Search ticker, name, group…"
           className="h-8 pl-8 text-xs"
-          aria-label="Search the universe"
+          aria-label="Search the list"
         />
       </div>
 
@@ -93,7 +95,7 @@ export function FilterBuilder({ filters, onChange, onPreset, facets, maxFilters,
           )}
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {active.length === 0 && <p className="text-xs text-muted">No filters — showing the whole universe. Add one below or start from a preset.</p>}
+          {active.length === 0 && <p className="text-xs text-muted">No filters — showing the whole list. Add one below or start from a preset.</p>}
           {active.map((k) => (
             <Popover.Root key={k} open={editing === k} onOpenChange={(o) => setEditing(o ? k : null)}>
               <span className={cn('inline-flex items-center rounded-md border text-xs', droppedFilters.includes(k) ? 'border-warn/50 bg-warn/10 text-warn line-through' : 'border-info/40 bg-info/10 text-text')}>
@@ -119,11 +121,14 @@ export function FilterBuilder({ filters, onChange, onPreset, facets, maxFilters,
             </Popover.Root>
           )}
         </div>
+        {active.some((k) => NULLABLE_FILTERS.has(k)) && (
+          <p className="mt-1.5 text-[10px] text-muted">n/a values excluded — tickers missing a filtered value (e.g. P/E for ETFs) are hidden.</p>
+        )}
         {(capHint || droppedFilters.length > 0) && plan === 'FREE' && (
           <UpgradeHint
             className="mt-2"
             compact
-            upgradeTo="PRO"
+            upgradeTo={PAID_PLAN}
             reason={droppedFilters.length ? `Free applies the first ${maxFilters} filters; ${droppedFilters.map((d) => FILTER_LABELS[d]).join(', ')} not applied.` : `Free screens use up to ${maxFilters} filters. Pro unlocks unlimited filters.`}
           />
         )}
@@ -180,7 +185,7 @@ function Editor({ k, filters, set, facets }: { k: FilterKey; filters: FilterStat
   if (k === 'marketCap') {
     return <CheckList options={MARKET_CAP_BUCKETS.map((b) => ({ value: b, label: MARKET_CAP_BOUNDS[b].label }))} value={filters.marketCap ?? []} onChange={(v) => set(k, v.length ? v : undefined)} />;
   }
-  if (k === 'sector' || k === 'industry' || k === 'country') {
+  if (k === 'sector' || k === 'industry' || k === 'country' || k === 'group') {
     const opts = (facets?.[k] ?? []).map((o) => ({ value: o.value, label: o.value, count: o.count }));
     return <CheckList searchable={opts.length > 8} options={opts} value={filters[k] ?? []} onChange={(v) => set(k, v.length ? v : undefined)} />;
   }
@@ -237,7 +242,7 @@ function RangeEditor({ value, onChange }: { value?: Range; onChange: (r: Range |
 function CheckList<T extends string>({ options, value, onChange, searchable }: { options: { value: T; label: string; count?: number }[]; value: T[]; onChange: (v: T[]) => void; searchable?: boolean }) {
   const [q, setQ] = React.useState('');
   const shown = q ? options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase())) : options;
-  if (!options.length) return <p className="text-xs text-muted">Loading options…</p>;
+  if (!options.length) return <p className="text-xs text-muted">No values in this list yet.</p>;
   return (
     <div>
       {searchable && <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter…" className="mb-2 h-7 text-xs" aria-label="Filter options" />}

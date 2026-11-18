@@ -5,7 +5,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import GoogleProvider from 'next-auth/providers/google';
 import { db } from './db';
-import { asPlan, type Plan, type Role } from './plans';
+import { normalizePlan, type Plan, type Role } from './plans';
+import { maskEmail } from './auth-guard';
 import { log } from './log';
 
 export interface SessionUser {
@@ -54,20 +55,21 @@ export const authOptions: NextAuthOptions = {
       credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' } },
       async authorize(creds) {
         const email = String(creds?.email ?? '').trim().toLowerCase();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+        const fail = (reason: 'invalid_email' | 'bad_password' | 'unknown_user' | 'demo_disabled') => {
+          log.warn('auth.login_failed', { reason, email: email ? maskEmail(email) : undefined });
+          return null;
+        };
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('invalid_email');
         const owner = process.env.PULSE_OWNER_EMAIL?.trim().toLowerCase();
         if (ownerLoginEnabled && email === owner) {
-          if (!safeEqual(String(creds?.password ?? ''), process.env.PULSE_OWNER_PASSWORD!)) {
-            log.info('auth.owner_password_rejected', { email });
-            return null;
-          }
+          if (!safeEqual(String(creds?.password ?? ''), process.env.PULSE_OWNER_PASSWORD!)) return fail('bad_password');
           const u = await upsertOwner(email);
           return { id: u.id, email: u.email, name: u.name, image: u.image };
         }
-        if (!demoLoginEnabled) return null;
+        if (!demoLoginEnabled) return fail(ownerLoginEnabled ? 'unknown_user' : 'demo_disabled');
         const user = await db.user.findUnique({ where: { email } });
-        if (!user) return null;
-        log.info('auth.magic_link_simulated', { email, link: `${process.env.NEXTAUTH_URL ?? 'http://localhost:4200'}/api/auth/callback/email?token=dev-simulated` });
+        if (!user) return fail('unknown_user');
+        log.info('auth.magic_link_simulated', { email: maskEmail(email), link: `${process.env.NEXTAUTH_URL ?? 'http://localhost:4200'}/api/auth/callback/email?token=dev-simulated` });
         return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
@@ -117,7 +119,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!id) return null;
   const u = await db.user.findUnique({ where: { id } });
   if (!u) return null;
-  return { id: u.id, orgId: u.orgId, email: u.email, name: u.name ?? u.email, role: (u.role as Role) ?? 'VIEWER', plan: asPlan(u.plan), image: u.image };
+  return { id: u.id, orgId: u.orgId, email: u.email, name: u.name ?? u.email, role: (u.role as Role) ?? 'VIEWER', plan: normalizePlan(u.plan), image: u.image };
 }
 
 /** Like getSessionUser but redirects to /login (server components) when signed out. */

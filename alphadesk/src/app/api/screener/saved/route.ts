@@ -4,6 +4,7 @@ import { assertFeature } from '@/lib/plans';
 import { screenRepo } from '@/lib/repos';
 import { sanitizeText } from '@/lib/sanitize';
 import { fromSavedScreen, safeParseFilters, sortSchema, toSavedScreen } from '@/lib/screener/engine';
+import { MAX_GROUP_LEN, MAX_LIST } from '@/lib/screener/list';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export const GET = withApi(
   { query: z.object({ id: z.string().max(64).optional() }) },
 );
 
-/** POST { id?, name, description?, filters, columns, sort } → create (or update when id given). */
+/** POST { id?, name, description?, filters, columns, sort, tickers?, groups? } → create (or update when id given). */
 export const POST = withApi(
   async ({ user, body }) => {
     const gate = assertFeature(user, 'savedScreens');
@@ -32,13 +33,15 @@ export const POST = withApi(
     if (!name) throw badRequest('Name is required');
     const f = safeParseFilters(body.filters);
     if (!f.ok) throw badRequest('Invalid filters', f.issues);
-    const input = toSavedScreen(name, { filters: f.filters, columns: body.columns, sort: body.sort }, body.description ? sanitizeText(body.description) : null);
+    const input = toSavedScreen(name, { filters: f.filters, columns: body.columns, sort: body.sort, tickers: body.tickers ?? null, groups: body.groups }, body.description ? sanitizeText(body.description) : null);
     if (body.id) {
       const ok = await screenRepo.update(scope(user), body.id, input);
       if (!ok) throw notFound('Saved screen not found');
-      return { screen: await screenRepo.get(scope(user), body.id) };
+      const s = await screenRepo.get(scope(user), body.id);
+      return { screen: s ? { ...s, ...fromSavedScreen(s) } : null };
     }
-    return { screen: await screenRepo.create(scope(user), input) };
+    const s = await screenRepo.create(scope(user), input);
+    return { screen: { ...s, ...fromSavedScreen(s) } };
   },
   {
     body: z.object({
@@ -48,6 +51,9 @@ export const POST = withApi(
       filters: z.record(z.string(), z.unknown()).default({}),
       columns: z.array(z.string().max(40)).max(40).default([]),
       sort: sortSchema.default([]),
+      /** the screen's ticker list (omit for old-style screens = default list) */
+      tickers: z.array(z.string().max(12)).max(MAX_LIST).nullable().optional(),
+      groups: z.record(z.string().max(12), z.string().max(MAX_GROUP_LEN)).optional(),
     }),
     rateLimit: 'mutation',
     audit: 'screen.save',

@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { SortingState, VisibilityState } from '@tanstack/react-table';
-import { Bookmark, Columns3, Download, FileSpreadsheet, FolderOpen, Rows3, Rows4, SearchX, Trash2 } from 'lucide-react';
+import { Bookmark, BookmarkPlus, Columns3, Download, FileSpreadsheet, FolderOpen, ListX, Rows3, Rows4, SearchX, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,17 +14,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { AutoRefresh } from '@/components/shell/AutoRefresh';
 import { MockBanner } from '@/components/shell/MockBanner';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { UpgradeHint } from '@/components/shell/UpgradeHint';
 import { useCurrentUser } from '@/components/shell/UserContext';
 import { ShareButton } from '@/components/sharing/ShareButton';
-import { assertFeature, type GateResult } from '@/lib/plans';
+import { assertFeature, PAID_PLAN, type GateResult } from '@/lib/plans';
 import { cn } from '@/lib/utils';
 import { DEFAULT_COLUMNS, SCREEN_COLUMNS } from '@/lib/screener/columns';
 import { DEFAULT_SORT, normalizeFilters, parseSort, screenerLimits, type FilterState, type Preset, type SortSpec } from '@/lib/screener/engine';
+import { addTickers, removeTicker } from '@/lib/screener/list';
 import type { SavedScreenWire, ScreenRunApiResponse } from '@/lib/screener/types';
 import { FilterBuilder } from './FilterBuilder';
+import { ListEditor } from './ListEditor';
 import { ScreenerGrid } from './ScreenerGrid';
 
 const visibilityFrom = (cols: string[]): VisibilityState => {
@@ -46,7 +49,8 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return j as T;
 }
 
-export function ScreenerClient() {
+/** `refreshKey` changes on every server render, so AutoRefresh (router.refresh) re-runs the screen. */
+export function ScreenerClient({ refreshKey }: { refreshKey?: number }) {
   const { user } = useCurrentUser();
   const router = useRouter();
   const params = useSearchParams();
@@ -66,6 +70,13 @@ export function ScreenerClient() {
   const [saveAsNew, setSaveAsNew] = React.useState(false);
   const [hint, setHint] = React.useState<GateResult | null>(null);
   const [adhocId] = React.useState(() => `adhoc:screen-${Date.now().toString(36)}`);
+  // ticker list: null = the user's default list (resolved server-side)
+  const [tickers, setTickers] = React.useState<string[] | null>(null);
+  const [groups, setGroups] = React.useState<Record<string, string>>({});
+  // last saved/loaded definition, for the unsaved-changes indicator
+  const [baseline, setBaseline] = React.useState<string | null>(null);
+  const [pendingTries, setPendingTries] = React.useState(0);
+  const [nonce, setNonce] = React.useState(0);
 
   const limits = screenerLimits(user.plan);
   const maxFilters = data?.limits.maxFilters ?? (Number.isFinite(limits.maxFilters) ? limits.maxFilters : null);
@@ -94,20 +105,23 @@ export function ScreenerClient() {
         setFilters(screen.filters ?? {});
         setSorting(parseSort(screen.sort));
         setColumnVisibility(visibilityFrom(screen.columns ?? []));
+        setTickers(screen.tickers ?? null);
+        setGroups(screen.groups ?? {});
         setCurrent({ id: screen.id, name: screen.name });
+        setBaseline(defKey(screen.filters ?? {}, parseSort(screen.sort), visibleIds(visibilityFrom(screen.columns ?? [])), screen.tickers ?? null, screen.groups ?? {}));
       })
       .catch((e: Error) => toast({ title: 'Could not open saved screen', description: e.message, variant: 'error' }));
     return () => { cancelled = true; };
   }, [screenParam]);
 
   // run (debounced)
-  const reqKey = JSON.stringify([normalizeFilters(filters), sort]);
+  const reqKey = JSON.stringify([normalizeFilters(filters), sort, tickers, groups]);
   React.useEffect(() => {
     const ctrl = new AbortController();
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const j = await api<ScreenRunApiResponse>('/api/screener/run', { method: 'POST', body: JSON.stringify({ filters, sort }), signal: ctrl.signal });
+        const j = await api<ScreenRunApiResponse>('/api/screener/run', { method: 'POST', body: JSON.stringify({ filters, sort, tickers, groups }), signal: ctrl.signal });
         setData(j);
         setError(null);
       } catch (e) {
@@ -118,17 +132,56 @@ export function ScreenerClient() {
     }, 200);
     return () => { clearTimeout(t); ctrl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reqKey]);
+  }, [reqKey, refreshKey, nonce]);
+
+  // some sources (SEC Form 4, financials) fill in after the first response: re-run a few times while rows are pending
+  React.useEffect(() => { setPendingTries(0); }, [reqKey]);
+  const pendingCount = data?.pending.length ?? 0;
+  React.useEffect(() => {
+    if (!pendingCount || pendingTries >= 6) return;
+    const t = setTimeout(() => { setPendingTries((n) => n + 1); setNonce((n) => n + 1); }, 8000);
+    return () => clearTimeout(t);
+  }, [pendingCount, pendingTries, data]);
+
+  // ── list editing ──
+  const listTickers = tickers ?? data?.list.tickers ?? [];
+  const defaultTickers = data?.defaultTickers ?? null;
+  const currentKey = defKey(filters, sort, visibleIds(columnVisibility), tickers ?? defaultTickers, groups);
+  const savedKey = baseline ?? defKey({}, DEFAULT_SORT, visibleIds(visibilityFrom([])), defaultTickers, {});
+  const resolvedSaved = savedKey.replace('"__default__"', JSON.stringify(defaultTickers));
+  const dirty = !!data && currentKey !== resolvedSaved;
+  const groupNames = React.useMemo(() => Array.from(new Set(Object.values(groups))).sort(), [groups]);
+
+  const onAdd = (input: string, group: string): string | null => {
+    const res = addTickers(listTickers, input);
+    if (res.added.length) setTickers(res.list);
+    const touched = [...res.added, ...res.duplicates];
+    if (group && touched.length) setGroups((g) => ({ ...g, ...Object.fromEntries(touched.map((t) => [t, group])) }));
+    const notes: string[] = [];
+    if (res.invalid.length) notes.push(`Not a valid ticker: ${res.invalid.join(', ')}`);
+    if (res.duplicates.length && !group) notes.push(`Already in the list: ${res.duplicates.join(', ')}`);
+    if (res.overCap.length) notes.push(`List is capped at 100 — not added: ${res.overCap.join(', ')}`);
+    return notes.length ? notes.join(' · ') : null;
+  };
+  const onRemove = React.useCallback((t: string) => {
+    setTickers((cur) => removeTicker(cur ?? data?.list.tickers ?? [], t));
+    setGroups((g) => { if (!(t in g)) return g; const n = { ...g }; delete n[t]; return n; });
+    toast({ title: `Removed ${t}`, description: 'Save the screen to keep this list.' });
+  }, [data?.list.tickers]);
+  const resetList = () => { setTickers(null); setGroups({}); };
 
   const applyPreset = (p: Preset) => {
     setFilters(p.filters);
     setSorting(p.sort);
     setCurrent(null);
+    setBaseline(null);
     if (screenParam) router.replace('/screener');
   };
 
   const exportHref = (format: 'csv' | 'xlsx') => {
     const q = new URLSearchParams({ format, filters: JSON.stringify(normalizeFilters(filters)), sort: JSON.stringify(sort), columns: visibleIds(columnVisibility).join(',') });
+    if (tickers) q.set('tickers', tickers.join(','));
+    if (Object.keys(groups).length) q.set('groups', JSON.stringify(groups));
     return `/api/screener/export?${q.toString()}`;
   };
   const onExport = (format: 'csv' | 'xlsx') => {
@@ -136,18 +189,22 @@ export function ScreenerClient() {
     window.location.href = exportHref(format);
   };
 
-  const openSave = () => {
+  const openSave = (asNew: boolean) => {
     if (!saveGate.allowed) { setHint(saveGate); return; }
-    setSaveName(current?.name ?? '');
-    setSaveAsNew(!current);
+    if (current && !asNew) { void persist(current.name, current.id); return; }
+    setSaveName(asNew && current ? `${current.name} (copy)` : current?.name ?? '');
+    setSaveAsNew(asNew || !current);
     setSaveOpen(true);
   };
-  const doSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const persist = async (name: string, id?: string) => {
     try {
-      const body = { ...(current && !saveAsNew ? { id: current.id } : {}), name: saveName, filters: normalizeFilters(filters), columns: visibleIds(columnVisibility), sort };
+      const list = tickers ?? data?.list.tickers ?? null;
+      const cols = visibleIds(columnVisibility);
+      const body = { ...(id ? { id } : {}), name, filters: normalizeFilters(filters), columns: cols, sort, tickers: list, groups };
       const { screen } = await api<{ screen: SavedScreenWire }>('/api/screener/saved', { method: 'POST', body: JSON.stringify(body) });
       setCurrent({ id: screen.id, name: screen.name });
+      setTickers(screen.tickers ?? list);
+      setBaseline(defKey(filters, sort, cols, screen.tickers ?? list, screen.groups ?? groups));
       setSaveOpen(false);
       toast({ title: 'Screen saved', description: screen.name, variant: 'success' });
       void loadSavedList();
@@ -159,11 +216,15 @@ export function ScreenerClient() {
       toast({ title: 'Save failed', description: e2.message, variant: 'error' });
     }
   };
+  const doSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    void persist(saveName, current && !saveAsNew ? current.id : undefined);
+  };
   const deleteSaved = async (s: SavedScreenWire) => {
     try {
       await api(`/api/screener/saved?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
       toast({ title: 'Screen deleted', description: s.name });
-      if (current?.id === s.id) { setCurrent(null); router.replace('/screener'); }
+      if (current?.id === s.id) { setCurrent(null); setBaseline(null); router.replace('/screener'); }
       void loadSavedList();
       router.refresh();
     } catch (e) {
@@ -176,13 +237,15 @@ export function ScreenerClient() {
     filters: normalizeFilters(filters),
     columns: visibleIds(columnVisibility),
     sort,
+    tickers: listTickers,
+    groups,
     resultCount: data?.matched ?? 0,
     rows: (data?.rows ?? []).slice(0, 250).map((r) => ({
-      ticker: r.ticker, name: r.name, sector: r.sector, marketCap: r.marketCap, price: r.price, changePct: r.changePct, pe: r.pe,
+      ticker: r.ticker, name: r.name, group: r.group ?? null, sector: r.sector, marketCap: r.marketCap, price: r.price, changePct: r.changePct, pe: r.pe,
       evEbitda: r.evEbitda, revenueGrowth: r.revenueGrowth, epsRevision30d: r.epsRevision30d, shortInterestPct: r.shortInterestPct,
       nextEarnings: r.nextEarnings, whyNow: r.whyNow.headline,
     })),
-    isMock: data?.meta.isMock ?? true,
+    isMock: data?.meta.isMock ?? false,
     asOf: data?.meta.asOf,
   });
 
@@ -192,10 +255,11 @@ export function ScreenerClient() {
   return (
     <div className="space-y-3">
       <PageHeader
-        title={current ? <>Screener <span className="text-muted">/</span> {current.name}</> : 'Screener'}
-        description="Filter the universe on valuation, revisions, ownership and catalysts. Research only — not investment advice."
+        title={current ? <>Screener <span className="text-muted">/</span> {current.name}{dirty && <span className="ml-1 text-accent" title="Unsaved changes" aria-label="Unsaved changes">•</span>}</> : 'Screener'}
+        description="Your ticker list with live prices, SEC fundamentals, insider activity and earnings dates — filter on top. Research only — not investment advice."
         actions={
           <>
+            <AutoRefresh everyMs={5 * 60_000} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm"><FolderOpen aria-hidden /> Saved</Button>
@@ -218,7 +282,10 @@ export function ScreenerClient() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="outline" size="sm" onClick={openSave}><Bookmark aria-hidden /> {current ? 'Save' : 'Save screen'}</Button>
+            <Button variant="outline" size="sm" onClick={() => openSave(false)} title={current ? `Save changes to “${current.name}”` : 'Save list, filters, sort and columns'}>
+              <Bookmark aria-hidden /> {current ? 'Save' : 'Save screen'}{dirty && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />}
+            </Button>
+            {current && <Button variant="ghost" size="sm" onClick={() => openSave(true)}><BookmarkPlus aria-hidden /> Save as…</Button>}
             <ShareButton
               itemType="screen"
               itemId={current?.id ?? adhocId}
@@ -260,17 +327,33 @@ export function ScreenerClient() {
         />
 
         <section className="min-w-0 flex-1 space-y-2" aria-label="Results">
+          <ListEditor
+            count={listTickers.length}
+            isDefault={tickers === null || (!!defaultTickers && tickers.join() === defaultTickers.join() && !Object.keys(groups).length)}
+            dirty={dirty}
+            groupNames={groupNames}
+            onAdd={onAdd}
+            onReset={resetList}
+          />
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
             <span aria-live="polite">
               {first ? 'Running screen…' : data ? (
                 <>
-                  <strong className="font-mono text-text">{data.matched}</strong> of <span className="font-mono">{data.universe}</span> match
+                  <strong className="font-mono text-text">{data.matched}</strong> of <span className="font-mono">{data.universe}</span> in list match
                   {data.returned < data.matched && <> · showing top <span className="font-mono">{data.returned}</span></>}
                   {data.cached && <span className="ml-1 opacity-70">(cached)</span>}
+                  {data.pending.length > 0 && <span className="ml-1 text-warn" title={data.pending.join(', ')}>· loading SEC data for {data.pending.length}…</span>}
                 </>
               ) : null}
             </span>
-            {data?.meta.asOf && <span className="hidden sm:inline">· as of {new Date(data.meta.asOf).toLocaleString()} · {data.meta.provider}</span>}
+            {data?.meta.asOf && (
+              <span className="hidden sm:inline">
+                · Data as of {new Date(data.meta.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · sources:{' '}
+                {data.meta.isMock ? data.meta.provider : data.meta.source.map((s, i) => (
+                  <React.Fragment key={s.id}>{i > 0 && ', '}<a href={s.url} target="_blank" rel="noreferrer" className="text-info hover:underline">{s.name.split(' (')[0].replace(' market data', '').replace('Financial Modeling Prep', 'FMP')}</a></React.Fragment>
+                ))}
+              </span>
+            )}
             <span className="ml-auto hidden items-center gap-1 md:flex">
               <Kbd>j</Kbd>/<Kbd>k</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>w</Kbd> why now
             </span>
@@ -299,18 +382,25 @@ export function ScreenerClient() {
           </div>
 
           {data?.rowCapped && user.plan === 'FREE' && (
-            <UpgradeHint compact upgradeTo="PRO" reason={`Free shows the top ${data.limits.maxRows} of ${data.matched} matches. Pro shows the full result set and unlocks export.`} />
+            <UpgradeHint compact upgradeTo={PAID_PLAN} reason={`Free shows the top ${data.limits.maxRows} of ${data.matched} matches. Pro shows the full result set and unlocks export.`} />
           )}
 
           {error && !data ? (
             <EmptyState icon={SearchX} title="Screen failed to run" description={error} action={<Button size="sm" variant="secondary" onClick={() => setFilters({ ...filters })}>Retry</Button>} />
           ) : first ? (
             <GridSkeleton />
+          ) : listTickers.length === 0 && data ? (
+            <EmptyState
+              icon={ListX}
+              title="Your list is empty"
+              description="Add tickers above (Enter, or paste several separated by commas), or go back to your default list."
+              action={<Button size="sm" variant="secondary" onClick={resetList}>Reset to default list</Button>}
+            />
           ) : rows.length === 0 ? (
             <EmptyState
               icon={SearchX}
               title="No matches — loosen P/E or try a preset"
-              description="Your filters exclude every company in the universe. Widen a range, remove a filter, or start from one of the presets on the left."
+              description="Your filters exclude every company in this list (tickers with unavailable values are excluded from numeric filters). Widen a range, remove a filter, or add tickers."
               action={<Button size="sm" variant="secondary" onClick={() => setFilters({})}>Clear filters</Button>}
             />
           ) : (
@@ -322,6 +412,7 @@ export function ScreenerClient() {
               onColumnVisibilityChange={setColumnVisibility}
               compact={compact}
               dim={loading}
+              onRemove={onRemove}
             />
           )}
         </section>
@@ -332,7 +423,7 @@ export function ScreenerClient() {
           <form onSubmit={doSave} className="space-y-4">
             <DialogHeader>
               <DialogTitle>{current && !saveAsNew ? 'Update saved screen' : 'Save screen'}</DialogTitle>
-              <DialogDescription>Saves filters, sort and visible columns. Visible to your organisation.</DialogDescription>
+              <DialogDescription>Saves the {listTickers.length}-ticker list (with groups), filters, sort and visible columns. Visible to your organisation.</DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5">
               <Label htmlFor="screen-name">Name</Label>
@@ -352,6 +443,12 @@ export function ScreenerClient() {
       </Dialog>
     </div>
   );
+}
+
+/** Stable comparison key for a screen definition (unsaved-changes indicator). null tickers = default list. */
+function defKey(filters: FilterState, sort: SortSpec, columns: string[], tickers: string[] | null, groups: Record<string, string>): string {
+  const g = Object.keys(groups).sort().map((k) => [k, groups[k]]);
+  return JSON.stringify([normalizeFilters(filters), sort, [...columns].sort(), tickers ?? '__default__', g]);
 }
 
 function GridSkeleton() {

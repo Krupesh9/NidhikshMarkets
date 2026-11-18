@@ -7,9 +7,9 @@ import type { ScreenResultRow } from '@/lib/screener/types';
 export function WhyNow({ row }: { row: ScreenResultRow }) {
   const src = row.whyNowSources ?? [];
   const items = [
-    { icon: Newspaper, label: 'News', text: row.whyNow.headline, source: src.find((s) => s.kind === 'news') ?? src[1] },
-    { icon: TrendingUp, label: 'Estimates', text: row.whyNow.estimateChange, source: src.find((s) => s.kind === 'estimate') ?? src[2] },
-    { icon: AlertTriangle, label: 'Risk', text: row.whyNow.risk, source: src.find((s) => s.kind === 'filing') ?? src[0] },
+    { icon: Newspaper, label: 'Signal', text: row.whyNow.headline, source: src.find((s) => s.kind === 'ownership') ?? src.find((s) => s.id.startsWith('cal:')) ?? src.find((s) => s.kind === 'price' || s.kind === 'news') ?? src[0] },
+    { icon: TrendingUp, label: 'Fundamentals', text: row.whyNow.estimateChange, source: src.find((s) => s.kind === 'filing') ?? src.find((s) => s.kind === 'estimate') ?? src[1] },
+    { icon: AlertTriangle, label: 'Risk', text: row.whyNow.risk, source: src.find((s) => s.kind === 'price') ?? src.find((s) => s.kind === 'filing') ?? src[0] },
   ];
   return (
     <div className="grid gap-2 py-1 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]" aria-label={`Why now for ${row.ticker}`}>

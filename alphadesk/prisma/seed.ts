@@ -29,7 +29,7 @@ async function main() {
 
   const org = await db.organization.create({ data: { name: 'Demo Capital', slug: 'demo-capital', seats: 5 } });
   const pm = await db.user.create({ data: { orgId: org.id, email: 'pm@nidhikshdesk.dev', name: 'Priya Mehta', role: 'ADMIN', plan: 'PRO_PLUS' } });
-  const analyst = await db.user.create({ data: { orgId: org.id, email: 'analyst@nidhikshdesk.dev', name: 'Alex Chen', role: 'ANALYST', plan: 'PRO' } });
+  const analyst = await db.user.create({ data: { orgId: org.id, email: 'analyst@nidhikshdesk.dev', name: 'Alex Chen', role: 'ANALYST', plan: 'PRO_PLUS' } });
   const intern = await db.user.create({ data: { orgId: org.id, email: 'intern@nidhikshdesk.dev', name: 'Jordan Lee', role: 'VIEWER', plan: 'FREE' } });
 
   for (const [u, syms] of [

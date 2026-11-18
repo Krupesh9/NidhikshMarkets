@@ -4,6 +4,9 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { ArrowLeft, Info } from 'lucide-react';
 import { requireSessionUser } from '@/lib/auth';
+import { hasFeature } from '@/lib/plans';
+import { LockedOverlay } from '@/components/billing/LockedOverlay';
+import { HoldingsSample } from '@/components/billing/LockedSamples';
 import { marketBySlug } from '@/lib/markets/global';
 import { getMarketHistory, getMarketSnapshot } from '@/lib/markets/detail';
 import { AutoRefresh } from '@/components/shell/AutoRefresh';
@@ -22,7 +25,8 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
 const KIND_LABEL = { index: 'Equity index', commodity: 'Commodity', yield: 'US Treasury yield' } as const;
 
 export default async function MarketPage({ params }: { params: { slug: string } }) {
-  await requireSessionUser();
+  const user = await requireSessionUser();
+  const canHoldings = hasFeature(user, 'marketHoldings');
   const market = marketBySlug(params.slug);
   if (!market) notFound();
   const [snap, history] = await Promise.all([getMarketSnapshot(market), getMarketHistory(market, '1Y')]);
@@ -69,7 +73,16 @@ export default async function MarketPage({ params }: { params: { slug: string } 
         </CardContent>
       </Card>
 
-      {market.kind === 'index' && (
+      {market.kind === 'index' && !canHoldings && (
+        <Card>
+          <CardContent className="pt-5">
+            <LockedOverlay feature="marketHoldings" title="Index holdings are a Pro feature"
+              includes={`Top 10 holdings of the ${market.etf ?? 'index'} proxy with weights, sector breakdown and each name's contribution to today's move.`}
+              sample={<HoldingsSample />} minHeight={360} />
+          </CardContent>
+        </Card>
+      )}
+      {market.kind === 'index' && canHoldings && (
         <Suspense fallback={<div className="grid gap-6 xl:grid-cols-3"><SectionSkeleton title="Top 10 holdings" rows={10} className="xl:col-span-2" /><SectionSkeleton title="Contribution" rows={4} /></div>}>
           <IndexSections market={market} snapshot={snap} />
         </Suspense>

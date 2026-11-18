@@ -12,11 +12,20 @@ import { cagr, mult, pct, round, usdB } from './format';
 import { METRIC_LABEL, findSector, type Metric } from './intent';
 import { rankChunks, type Chunk } from './search';
 import { validateToolInput, isToolName, type ToolInput, type ToolName } from './tool-schemas';
+import { hasFeature, type Feature } from '@/lib/plans';
 import type { ChartBlock, StructuredBlock, TableBlock } from './types';
 
 export interface ToolContext {
-  user: Pick<SessionUser, 'id' | 'orgId'> | null;
+  /** `plan` comes from the DB-fresh session user; tools that touch premium data are refused without it. */
+  user: (Pick<SessionUser, 'id' | 'orgId'> & { plan?: string }) | null;
 }
+
+/** Plan features each tool needs (on top of `ai`). Enforced in executeTool — never trust the model to self-limit. */
+const TOOL_FEATURES: Partial<Record<ToolName, Feature[]>> = {
+  get_company_snapshot: ['analystResearch'],
+  get_financials: ['financials'],
+  compare_companies: ['financials'],
+};
 
 export interface ToolOutput {
   data: unknown;
@@ -560,6 +569,9 @@ export async function executeTool(name: string, input: unknown, ctx: ToolContext
   if (!isToolName(name)) return { ok: false, data: { error: `Unknown tool ${name}` }, sources: [], isMock: false, summary: 'unknown tool' };
   const v = validateToolInput(name, input);
   if (!v.ok) return { ok: false, data: { error: `Invalid input: ${v.error}` }, sources: [], isMock: false, summary: 'invalid input' };
+  const needs: Feature[] = ['ai', ...(TOOL_FEATURES[name] ?? [])];
+  const missing = needs.find((f) => !hasFeature(ctx.user && ctx.user.plan ? { plan: ctx.user.plan } : null, f));
+  if (missing) return { ok: false, data: { error: 'upgrade_required', feature: missing }, sources: [], isMock: false, summary: 'Pro feature' };
   try {
     const out = await (IMPL[name] as (i: unknown, c: ToolContext) => Promise<ToolOutput>)(v.input, ctx);
     const err = out.data && typeof out.data === 'object' && 'error' in (out.data as object);

@@ -1,10 +1,11 @@
-import { withApi, notFound } from '@/lib/http';
+import { withApi, notFound, requireFeature } from '@/lib/http';
 import { researchRepo } from '@/lib/repos';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/ai/threads/:id → { thread } with messages (citations, structured blocks, tool steps). */
 export const GET = withApi(async ({ user, params }) => {
+  requireFeature(user, 'ai');
   const thread = await researchRepo.getThread({ orgId: user.orgId, userId: user.id }, params.id);
   if (!thread || thread.userId !== user.id) throw notFound('Thread not found');
   return { thread };

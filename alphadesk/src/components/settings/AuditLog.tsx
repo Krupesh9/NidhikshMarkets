@@ -41,7 +41,7 @@ export function AuditLog({ initial }: { initial: AuditItem[] }) {
   }, []);
 
   return (
-    <Card id="audit" className="scroll-mt-16">
+    <Card id="audit" className="scroll-mt-28">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><ScrollText className="h-4 w-4 text-muted" aria-hidden /> Audit log</CardTitle>

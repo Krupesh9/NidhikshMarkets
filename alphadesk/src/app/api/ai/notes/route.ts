@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withApi } from '@/lib/http';
+import { withApi, requireFeature } from '@/lib/http';
 import { researchRepo } from '@/lib/repos';
 import { sanitizeMarkdown, sanitizeText, sanitizeTicker } from '@/lib/sanitize';
 
@@ -29,6 +29,7 @@ const body = z.object({
 /** GET /api/ai/notes?ticker=AAPL → { notes } (org research notes) */
 export const GET = withApi(
   async ({ user, query }) => {
+    requireFeature(user, 'ai');
     const notes = await researchRepo.listNotes({ orgId: user.orgId, userId: user.id }, { ticker: query.ticker ? sanitizeTicker(query.ticker) ?? undefined : undefined });
     return { notes };
   },
@@ -41,6 +42,7 @@ export const GET = withApi(
  */
 export const POST = withApi(
   async ({ user, body: b }) => {
+    requireFeature(user, 'ai');
     const title = sanitizeText(b.title || b.question, 200).slice(0, 200) || 'Research note';
     const note = await researchRepo.createNote(
       { orgId: user.orgId, userId: user.id },

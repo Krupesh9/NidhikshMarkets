@@ -11,11 +11,16 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Delta } from '@/components/ui/delta';
 import { cn, fmt } from '@/lib/utils';
 import { crossovers, ema, macd, rsi, sma, type Out } from './lib/indicators';
+import { LockedButton } from '@/components/billing/UpgradeDialog';
+import { LockedOverlay } from '@/components/billing/LockedOverlay';
+import { IndicatorSample } from '@/components/billing/LockedSamples';
+import { BASIC_CHART_RANGES } from '@/lib/plans';
 
 /** Intraday ranges are being added to HistoryRange by the data layer; keep a local superset so this compiles either way. */
 type ChartRange = HistoryRange | '1D' | '1W';
 const RANGES: ChartRange[] = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'MAX'];
 const INTRADAY = new Set<ChartRange>(['1D', '1W']);
+const BASIC = new Set<string>(BASIC_CHART_RANGES);
 
 const PERIODS = [10, 20, 30, 40, 50, 100, 200] as const;
 const RSI_PERIODS = [14, 10, 20, 30] as const;
@@ -45,6 +50,8 @@ interface Prefs {
 }
 const DEFAULT_PREFS: Prefs = { sma: [50, 200], ema: [], cross: { on: false, period: 50 }, macd: false, rsi: { on: false, period: 14 } };
 const PREFS_KEY = 'nd-chart-indicators';
+/** Free plan: no indicators regardless of stored prefs (the history API also refuses the long base ranges). */
+const NO_PREFS: Prefs = { sma: [], ema: [], cross: { on: false, period: 50 }, macd: false, rsi: { on: false, period: 14 } };
 
 function sanitizePrefs(raw: unknown): Prefs {
   const p = (raw && typeof raw === 'object' ? raw : {}) as Partial<Prefs>;
@@ -292,10 +299,12 @@ function SplitToggle({ label, on, onToggle, popLabel, children }: { label: React
 
 // ---------------------------------------------------------------- main
 
-export function PriceChart({ ticker, initialBars }: { ticker: string; initialBars: Bar[] }) {
+export function PriceChart({ ticker, initialBars, canAdvanced = true }: { ticker: string; initialBars: Bar[]; canAdvanced?: boolean }) {
   const [range, setRange] = React.useState<ChartRange>('1Y');
-  const [mode, setMode] = React.useState<'area' | 'line' | 'candle'>('area');
-  const [prefs, setPrefs] = usePrefs();
+  const [modeRaw, setMode] = React.useState<'area' | 'line' | 'candle'>('area');
+  const mode = canAdvanced ? modeRaw : modeRaw === 'candle' ? 'area' : modeRaw;
+  const [storedPrefs, setPrefs] = usePrefs();
+  const prefs = canAdvanced ? storedPrefs : NO_PREFS;
   const { cache, errors, request } = useHistoryCache(ticker, { range: '1Y', bars: initialBars });
 
   const intraday = INTRADAY.has(range);
@@ -413,7 +422,9 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
       {/* Row 1: range, chart type, period change */}
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <div role="group" aria-label="Chart range" className="inline-flex flex-wrap rounded-md border border-border bg-panel-2 p-0.5">
-          {RANGES.map((r) => (
+          {RANGES.map((r) => !canAdvanced && !BASIC.has(r) ? (
+            <LockedButton key={r} feature="advancedCharts" label={`${r} range`} className="rounded px-2 py-1 font-mono text-xs text-muted/80 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">{r}</LockedButton>
+          ) : (
             <button key={r} type="button" onClick={() => setRange(r)} aria-pressed={range === r}
               className={cn('rounded px-2.5 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info', range === r ? 'bg-accent text-accent-foreground' : 'text-muted hover:text-text')}>
               {r}
@@ -423,6 +434,9 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
         <div role="group" aria-label="Chart type" className="inline-flex rounded-md border border-border bg-panel-2 p-0.5">
           {(['area', 'line', 'candle'] as const).map((m) => {
             const Icon = m === 'area' ? AreaIcon : m === 'line' ? LineIcon : CandlestickChart;
+            if (m === 'candle' && !canAdvanced) {
+              return <LockedButton key={m} feature="advancedCharts" label="Candlestick chart" className="rounded px-2 py-1 text-muted/80 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info"><Icon className="h-3.5 w-3.5" aria-hidden /></LockedButton>;
+            }
             return (
               <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} aria-label={m === 'candle' ? 'Candlestick chart' : `${m} chart`} title={m === 'candle' ? 'Candlestick' : m === 'area' ? 'Area' : 'Line'}
                 className={cn('rounded px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info', mode === m ? 'bg-border text-text' : 'text-muted hover:text-text')}>
@@ -438,8 +452,16 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
         )}
       </div>
 
-      {/* Row 2: indicator toolbar */}
-      <div role="toolbar" aria-label="Indicators" className="mb-2 flex flex-wrap items-center gap-1.5">
+      {/* Row 2: indicator toolbar (Free: locked buttons that open the upgrade dialog) */}
+      {!canAdvanced && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Indicators (Pro)">
+          <span className="mr-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">Indicators</span>
+          {['SMA', 'EMA', 'SMA × EMA', 'MACD', 'RSI'].map((l) => (
+            <LockedButton key={l} feature="advancedCharts" label={`${l} indicator`} className={cn(toggleCls(false), 'gap-1.5')}>{l}</LockedButton>
+          ))}
+        </div>
+      )}
+      {canAdvanced && <div role="toolbar" aria-label="Indicators" className="mb-2 flex flex-wrap items-center gap-1.5">
         <span className="mr-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">Indicators</span>
         {(['sma', 'ema'] as const).map((kind) => {
           const sel = prefs[kind];
@@ -472,7 +494,7 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
         {anyIndicator && (
           <button type="button" onClick={() => setPrefs({ ...DEFAULT_PREFS, sma: [] })} className="ml-1 rounded px-1 text-[11px] text-muted hover:text-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">Clear</button>
         )}
-      </div>
+      </div>}
 
       {/* Legend chips */}
       {(lines.length > 0 || baseLoading) && showChart && (
@@ -605,6 +627,13 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
             </ComposedChart>
           </ResponsiveContainer>
         </SubPane>
+      )}
+
+      {!canAdvanced && (
+        <LockedOverlay feature="advancedCharts" className="mt-3 border border-border" minHeight={190}
+          title="Advanced charting is a Pro feature"
+          includes="SMA, EMA, MACD, RSI and crossovers, candlesticks, 1D / 1W intraday and 5Y / MAX history."
+          sample={<IndicatorSample />} />
       )}
     </div>
   );

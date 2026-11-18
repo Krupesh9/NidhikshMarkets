@@ -1,5 +1,5 @@
 /** Column catalogue shared by the grid and exports. Pure. */
-import type { ScreenRow } from '@/lib/data/types';
+import type { LiveScreenRow } from './types';
 
 export type ColumnFormat = 'text' | 'money' | 'bigMoney' | 'pct' | 'signedPct' | 'multiple' | 'score' | 'date' | 'list';
 
@@ -13,12 +13,15 @@ export interface ColumnDef {
   default?: boolean;
   /** excel number format */
   numFmt?: string;
-  get: (r: ScreenRow) => string | number | null;
+  /** header tooltip (e.g. why a column is empty) */
+  note?: string;
+  get: (r: LiveScreenRow) => string | number | null;
 }
 
 export const SCREEN_COLUMNS: ColumnDef[] = [
   { id: 'ticker', label: 'Ticker', format: 'text', default: true, get: (r) => r.ticker },
   { id: 'name', label: 'Name', format: 'text', default: true, get: (r) => r.name },
+  { id: 'group', label: 'Group', format: 'text', default: true, note: 'Your own grouping for this list (set when adding a ticker)', get: (r) => r.group || null },
   { id: 'sector', label: 'Sector', format: 'text', default: true, get: (r) => r.sector },
   { id: 'industry', label: 'Industry', format: 'text', get: (r) => r.industry },
   { id: 'country', label: 'Country', format: 'text', get: (r) => r.country },
@@ -29,12 +32,12 @@ export const SCREEN_COLUMNS: ColumnDef[] = [
   { id: 'pe', label: 'P/E', format: 'multiple', default: true, numFmt: '0.0"x"', get: (r) => r.pe },
   { id: 'evEbitda', label: 'EV/EBITDA', format: 'multiple', default: true, numFmt: '0.0"x"', get: (r) => r.evEbitda },
   { id: 'revenueGrowth', label: 'Rev growth', format: 'signedPct', signed: true, default: true, numFmt: '+0.0"%";-0.0"%";0.0"%"', get: (r) => r.revenueGrowth },
-  { id: 'epsRevision30d', label: 'EPS rev 30d', format: 'signedPct', signed: true, default: true, numFmt: '+0.0"%";-0.0"%";0.0"%"', get: (r) => r.epsRevision30d },
-  { id: 'shortInterestPct', label: 'Short int %', format: 'pct', default: true, numFmt: '0.0"%"', get: (r) => r.shortInterestPct },
+  { id: 'epsRevision30d', label: 'EPS rev 30d', format: 'signedPct', signed: true, default: true, note: 'From Alpha Vantage estimates already loaded on a company page (25 calls/day) — otherwise —', numFmt: '+0.0"%";-0.0"%";0.0"%"', get: (r) => r.epsRevision30d },
+  { id: 'shortInterestPct', label: 'Short int %', format: 'pct', numFmt: '0.0"%"', note: 'No free data source for short interest — shows — until a feed is connected', get: (r) => r.shortInterestPct },
   { id: 'insiderBuying90d', label: 'Insider 90d', format: 'bigMoney', signed: true, default: true, numFmt: '$#,##0;[Red]-$#,##0', get: (r) => r.insiderBuying90d },
-  { id: 'esgScore', label: 'ESG', format: 'score', numFmt: '0', get: (r) => r.esgScore },
+  { id: 'esgScore', label: 'ESG', format: 'score', numFmt: '0', note: 'No free data source for ESG scores — shows — until a feed is connected', get: (r) => r.esgScore },
   { id: 'nextEarnings', label: 'Next earnings', format: 'date', default: true, get: (r) => r.nextEarnings || null },
-  { id: 'catalystFlags', label: 'Catalysts', format: 'list', default: true, get: (r) => r.catalystFlags.join(', ') },
+  { id: 'catalystFlags', label: 'Catalysts', format: 'list', default: true, get: (r) => r.catalystFlags.join(', ') || null },
   { id: 'whyNow', label: 'Why now', format: 'text', default: true, get: (r) => r.whyNow?.headline ?? null },
 ];
 

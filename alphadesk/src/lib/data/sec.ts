@@ -1,10 +1,11 @@
 import 'server-only';
-import type { Filing, FinancialPeriod, Financials, InsiderTxn, PartialProvider, SourceRef, WithMeta } from './types';
+import type { Filing, FinancialPeriod, Financials, GicsSector, InsiderTxn, PartialProvider, Profile, SourceRef, WithMeta } from './types';
 import { parseForm4 } from './secForm4';
 import { factMapFromCompanyFacts, mapSecFinancials, secFilingUrl, type FactMap, type XbrlFact } from './secFinancials';
 import { getNidhikshSecFundamentals } from './nidhiksh';
 import { cache } from '../cache';
 import { log } from '../log';
+import { meteredFetch } from '../usage-meter';
 
 /** SEC EDGAR live adapter (filings via submissions API; companyfacts helper). Requires SEC_USER_AGENT. 24h cache. */
 const NAME = 'SEC EDGAR';
@@ -18,7 +19,7 @@ export function secEnabled(): boolean {
 
 async function secJson<T>(url: string): Promise<T> {
   try {
-    const res = await fetch(url, {
+    const res = await meteredFetch('sec', url, {
       headers: { 'User-Agent': process.env.SEC_USER_AGENT ?? '', Accept: 'application/json' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: 'no-store',
@@ -47,8 +48,34 @@ export async function secCikFor(ticker: string): Promise<string | null> {
 }
 
 interface Submissions {
+  name?: string;
+  sic?: string;
+  sicDescription?: string;
+  exchanges?: string[];
+  website?: string;
+  addresses?: { business?: { city?: string; stateOrCountry?: string } };
   filings: { recent: { accessionNumber: string[]; filingDate: string[]; reportDate: string[]; form: string[]; primaryDocument: string[]; primaryDocDescription: string[] } };
 }
+
+/** Rough SIC → GICS sector mapping for the SEC profile fallback (the SIC description is shown as the industry). */
+export function sicToGics(sicCode?: string): GicsSector {
+  const n = Number(sicCode);
+  if (!Number.isFinite(n)) return 'Industrials';
+  const inRange = (a: number, b: number) => n >= a && n <= b;
+  if ([3570, 3571, 3572, 3576, 3577, 3578, 3579, 3661, 3663, 3669, 3672, 3674, 3677, 3678, 3679].includes(n) || inRange(7370, 7379) || inRange(3825, 3829)) return 'Information Technology';
+  if (inRange(4800, 4899) || inRange(2710, 2799) || inRange(7810, 7841)) return 'Communication Services';
+  if (inRange(2830, 2836) || inRange(3841, 3851) || inRange(8000, 8099) || n === 5122) return 'Health Care';
+  if (inRange(6000, 6411) || inRange(6700, 6799)) return 'Financials';
+  if (inRange(6500, 6553) || n === 6798) return 'Real Estate';
+  if (inRange(1300, 1389) || inRange(2900, 2999) || n === 4922 || n === 4923) return 'Energy';
+  if (inRange(4900, 4991)) return 'Utilities';
+  if (inRange(1000, 1499) || inRange(2600, 2699) || inRange(2800, 2829) || inRange(2840, 2899) || inRange(3300, 3399)) return 'Materials';
+  if (inRange(2000, 2199) || inRange(5400, 5499) || inRange(2840, 2844) || n === 5331 || n === 5399) return 'Consumer Staples';
+  if (inRange(5000, 5999) || inRange(7000, 7099) || inRange(3711, 3716) || inRange(2300, 2399) || inRange(5800, 5899)) return 'Consumer Discretionary';
+  return 'Industrials';
+}
+
+const titleCase = (s: string) => s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase()).replace(/\b(Inc|Corp|Co|Ltd|Plc|Llc|Lp)\b/g, (w) => w);
 
 /** Raw XBRL companyfacts (large JSON). Cached 24h. */
 export async function secCompanyFacts(ticker: string): Promise<unknown | null> {
@@ -103,6 +130,26 @@ export const secProvider: PartialProvider = {
     }] : [];
     return { data, meta: { source: src, isMock: false, asOf: f?.asOf ?? new Date().toISOString(), provider: f?.origin === 'cache' ? 'SEC EDGAR (Nidhiksh cache)' : NAME } };
   },
+  /** Company profile fallback from SEC submissions (official name, SIC industry, exchange, HQ). No daily limit. */
+  async getProfile(ticker: string): Promise<WithMeta<Profile | null>> {
+    const T = ticker.toUpperCase();
+    const empty = { data: null, meta: { source: [], isMock: false, asOf: new Date().toISOString(), provider: NAME } };
+    if (!secEnabled()) return empty;
+    const cik = await secCikFor(T);
+    if (!cik) return empty;
+    const sub = await cache.wrap(`sec:sub:${cik}`, () => secJson<Submissions>(`https://data.sec.gov/submissions/CIK${cik}.json`), DAY_MS);
+    if (!sub?.name) return empty;
+    const biz = sub.addresses?.business;
+    const data: Profile = {
+      ticker: T, name: titleCase(sub.name), sector: sicToGics(sub.sic), industry: sub.sicDescription ?? '', country: 'US',
+      exchange: sub.exchanges?.[0] ?? '', description: '', employees: 0, founded: 0,
+      hq: [biz?.city, biz?.stateOrCountry].filter(Boolean).map((x) => titleCase(String(x))).join(', '),
+      website: sub.website ?? '', ceo: '', cik, marketCap: 0, sharesOutstanding: 0, beta: 0, dividendYield: 0,
+      pe: 0, forwardPe: 0, evEbitda: 0, priceToSales: 0, week52High: 0, week52Low: 0,
+    };
+    return { data, meta: { source: [{ id: `sec:profile:${cik}`, name: `${T} company information (SEC EDGAR)`, url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}`, kind: 'filing' }], isMock: false, asOf: new Date().toISOString(), provider: NAME } };
+  },
+
   /** Insider transactions from the latest Form 4 filings (raw XML), refreshed hourly. */
   async getInsiders(ticker: string): Promise<WithMeta<InsiderTxn[]>> {
     const T = ticker.toUpperCase();
@@ -123,12 +170,19 @@ export const secProvider: PartialProvider = {
         docs.push({ acc, url: base + doc, xmlUrl: base + doc.split('/').pop() });
       }
       const out: InsiderTxn[] = [];
-      for (const d of docs) { // sequential: stays well under SEC's 10 requests/second
+      let failed = 0;
+      for (const d of docs) { // sequential + paced (≤ ~8/s): stays under SEC's 10 requests/second even when fast
+        const started = Date.now();
         try {
-          const res = await fetch(d.xmlUrl, { headers: { 'User-Agent': process.env.SEC_USER_AGENT ?? '' }, signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
+          const res = await meteredFetch('sec', d.xmlUrl, { headers: { 'User-Agent': process.env.SEC_USER_AGENT ?? '' }, signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
           if (res.ok) out.push(...parseForm4(await res.text(), T, d.url, d.acc));
-        } catch (e) { log.debug('sec.form4_failed', { acc: d.acc, err: (e as Error).message }); }
+          else failed++;
+        } catch (e) { failed++; log.debug('sec.form4_failed', { acc: d.acc, err: (e as Error).message }); }
+        const wait = 125 - (Date.now() - started);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       }
+      // every filing failed (e.g. SEC 429 throttling): don't cache an empty list for an hour
+      if (docs.length && failed === docs.length) throw new Error('sec: all Form 4 fetches failed');
       return out.sort((a, b) => b.date.localeCompare(a.date));
     }, 3600_000);
     return {

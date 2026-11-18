@@ -4,10 +4,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronsLeft, ChevronsRight, ShieldCheck } from 'lucide-react';
-import { NAV, isActive } from '@/config/nav';
+import { isActive, visibleNav } from '@/config/nav';
 import { cn } from '@/lib/utils';
 import { APP_NAME } from './Logo';
 import { Tip } from '@/components/ui/tooltip';
+import { ProChip, useUpgrade } from '@/components/billing/UpgradeDialog';
+import { hasFeature } from '@/lib/plans';
+import { useCurrentUser } from './UserContext';
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -18,6 +21,8 @@ export interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle, locked }: SidebarProps) {
   const pathname = usePathname();
+  const { user } = useCurrentUser();
+  const { openUpgrade } = useUpgrade();
   return (
     <aside
       aria-label="Primary"
@@ -41,12 +46,15 @@ export function Sidebar({ collapsed, onToggle, locked }: SidebarProps) {
       </div>
       <nav className={cn('flex flex-1 flex-col gap-1 overflow-y-auto scrollbar-thin', collapsed ? 'p-2 pt-4' : 'px-4 pt-6')}>
         {!collapsed && <span className="eyebrow mb-2 px-3">Workspace</span>}
-        {NAV.map((item) => {
+        {visibleNav(user.canSettings).map((item) => {
           const active = isActive(item, pathname);
+          const locked = !!item.feature && !hasFeature(user, item.feature);
           const link = (
             <Link
               key={item.href}
               href={item.href}
+              onClick={locked ? (e) => { e.preventDefault(); openUpgrade(item.feature); } : undefined}
+              aria-label={locked ? `${item.label} — locked, Pro feature` : undefined}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14.5px] text-muted hover:bg-panel-2 hover:text-text',
@@ -56,6 +64,7 @@ export function Sidebar({ collapsed, onToggle, locked }: SidebarProps) {
             >
               <item.icon className={cn('h-[18px] w-[18px] shrink-0 transition-colors', active ? 'text-accent' : 'group-hover:text-text')} aria-hidden />
               {!collapsed && <span className="flex-1">{item.label}</span>}
+              {!collapsed && locked && <ProChip />}
               {!collapsed && active && <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />}
               {collapsed && <span className="sr-only">{item.label}</span>}
             </Link>

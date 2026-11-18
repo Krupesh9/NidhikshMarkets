@@ -6,6 +6,7 @@ import { isIntradayRange } from './types';
 import { intradaySpec, intradayStart, isoMinute, lastSessions } from './intraday';
 import { MOCK_BY_TICKER } from './mock/universe';
 import { log } from '../log';
+import { hasMinuteBudget, meteredFetch } from '../usage-meter';
 
 /**
  * Massive (formerly Polygon.io) REST adapter. Active only when MASSIVE_API_KEY (or legacy POLYGON_API_KEY) is set.
@@ -35,12 +36,14 @@ async function get<T>(path: string): Promise<T> {
   if (!key) throw new Error('massive: not configured');
   const fam = family(path);
   if ((blocked.get(fam) ?? 0) > Date.now()) throw new Error(`massive: ${fam} not available on this plan`);
+  // Free tier is 5 calls/minute: skip (next provider in the chain answers) rather than earn a 429.
+  if (!hasMinuteBudget('massive')) throw new Error('massive: per-minute budget used, skipping');
   let lastErr: unknown;
   for (let i = 0; i < HOSTS.length; i++) {
     const hostIdx = (preferredHost + i) % HOSTS.length;
     const host = HOSTS[hostIdx];
     try {
-      const res = await fetch(host + path, {
+      const res = await meteredFetch('massive', host + path, {
         headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(TIMEOUT_MS),
         cache: 'no-store',

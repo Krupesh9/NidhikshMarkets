@@ -1,53 +1,38 @@
-/** Plan comparison + pricing math (pure; client-safe). */
-import { PLAN_INFO, PLANS, formatLimit, type Plan } from '@/lib/plans';
+/** Plan comparison + pricing math (pure; client-safe). Two plans: Free and Pro ($100/mo, stored as PRO_PLUS). */
+import { PLAN_INFO, PLANS, formatLimit, type Feature, type Plan } from '@/lib/plans';
 
-export type BillingCycle = 'monthly' | 'yearly';
-
-/** Annual savings vs paying monthly for 12 months, computed from the plan constants (Pro: 12×50−500 = $100). */
-export function yearlySavings(plan: Plan): number {
+export function priceLabel(plan: Plan): string {
   const p = PLAN_INFO[plan];
-  return Math.max(0, p.priceMonthly * 12 - p.priceYearly);
-}
-
-export function priceLabel(plan: Plan, cycle: BillingCycle): string {
-  const p = PLAN_INFO[plan];
-  if (p.priceMonthly === 0) return '$0';
-  return cycle === 'monthly' ? `$${p.priceMonthly.toLocaleString('en-US')}/mo` : `$${p.priceYearly.toLocaleString('en-US')}/yr`;
-}
-
-export function savingsLabel(plan: Plan): string | null {
-  const s = yearlySavings(plan);
-  return s > 0 ? `save $${s.toLocaleString('en-US')}` : null;
+  return p.priceMonthly === 0 ? '$0' : `$${p.priceMonthly.toLocaleString('en-US')}/mo`;
 }
 
 export interface PlanFeatureRow { label: string; values: Record<Plan, string | boolean> }
 
 export function planComparisonRows(): PlanFeatureRow[] {
   const by = <T,>(f: (p: Plan) => T) => Object.fromEntries(PLANS.map((p) => [p, f(p)])) as Record<Plan, T>;
+  const feat = (k: Feature) => by((p) => PLAN_INFO[p].features[k]);
   return [
-    { label: 'AI research queries / month', values: by((p) => (PLAN_INFO[p].limits.aiQueriesPerMonth === 0 ? false : formatLimit(PLAN_INFO[p].limits.aiQueriesPerMonth))) },
+    { label: 'Price chart (area/line, 1M–1Y), quote, P/E & EPS (TTM), market cap', values: by(() => true) },
+    { label: 'News, filings list, calendar, watchlist, market charts', values: by(() => true) },
     { label: 'Company deep dives / day', values: by((p) => formatLimit(PLAN_INFO[p].limits.deepDivesPerDay)) },
     { label: 'Portfolio positions', values: by((p) => formatLimit(PLAN_INFO[p].limits.positions)) },
-    { label: 'Workspaces', values: by((p) => formatLimit(PLAN_INFO[p].limits.workspaces)) },
-    { label: 'Share notes, screens & portfolios', values: by((p) => PLAN_INFO[p].features.sharing) },
-    { label: 'Custom basket sharing', values: by((p) => PLAN_INFO[p].features.customBasketSharing) },
+    { label: 'AI research assistant with citations', values: by((p) => (PLAN_INFO[p].limits.aiQueriesPerMonth === 0 ? false : formatLimit(PLAN_INFO[p].limits.aiQueriesPerMonth))) },
+    { label: 'Advanced charts: indicators, candlesticks, 1D/1W, 5Y/MAX', values: feat('advancedCharts') },
+    { label: 'Analyst research: ratings, targets, actions, consensus, Fwd EPS/P/E', values: feat('analystResearch') },
+    { label: 'Financial statements and EV/EBITDA', values: feat('financials') },
+    { label: 'Ownership: insiders (Form 4) and 13F holders', values: feat('ownership') },
+    { label: 'Index holdings, sector weights, contribution', values: feat('marketHoldings') },
+    { label: 'Sharing and export', values: feat('sharing') },
     { label: 'Team seats', values: by((p) => (PLAN_INFO[p].features.team ? String(PLAN_INFO[p].limits.seats) : false)) },
-    { label: 'Priority data refresh', values: by((p) => PLAN_INFO[p].features.priorityRefresh) },
-    { label: 'Export', values: by((p) => PLAN_INFO[p].features.export) },
   ];
 }
 
-/** What changes when moving between plans (for the toggle confirmation copy). */
+/** What changes when moving between plans (shown to the admin after changing a member's plan). */
 export function planChangeSummary(from: Plan, to: Plan): string[] {
   if (from === to) return [];
-  const a = PLAN_INFO[from], b = PLAN_INFO[to];
-  const out: string[] = [];
-  if (a.limits.aiQueriesPerMonth !== b.limits.aiQueriesPerMonth) out.push(`AI queries: ${formatLimit(a.limits.aiQueriesPerMonth)} → ${formatLimit(b.limits.aiQueriesPerMonth)} / month`);
-  if (a.limits.positions !== b.limits.positions) out.push(`Positions: ${formatLimit(a.limits.positions)} → ${formatLimit(b.limits.positions)}`);
-  if (a.features.sharing !== b.features.sharing) out.push(b.features.sharing ? 'Sharing unlocked' : 'Sharing disabled (existing shares stay visible)');
-  if (a.features.customBasketSharing !== b.features.customBasketSharing) out.push(b.features.customBasketSharing ? 'Basket sharing unlocked' : 'Basket sharing disabled');
-  if (a.features.team !== b.features.team) out.push(b.features.team ? `Team seats: ${b.limits.seats}` : 'Team management disabled');
-  return out;
+  return to === 'PRO_PLUS'
+    ? ['AI research, analyst data, financials, ownership and advanced charts unlocked', 'Unlimited deep dives and positions']
+    : ['Premium sections locked', `Deep dives limited to ${PLAN_INFO.FREE.limits.deepDivesPerDay}/day, ${PLAN_INFO.FREE.limits.positions} positions`];
 }
 
 /** Usage meter fraction 0..1 (Infinity limit → 0, zero limit → 1 when any usage). */

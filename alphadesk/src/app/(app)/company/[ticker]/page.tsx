@@ -11,8 +11,10 @@ import { AutoRefresh } from '@/components/shell/AutoRefresh';
 import { CompanyHeader } from '@/components/company/CompanyHeader';
 import { DeepDiveLimitCard } from '@/components/company/DeepDiveLimitCard';
 import { SectionSkeleton } from '@/components/company/SectionCard';
-import { ChartSection, EstimatesSection, FinancialsSection, NewsFilingsSection, OwnershipSection, PageMockBanner } from '@/components/company/sections';
-import { loadCore } from '@/components/company/server/data';
+import { ChartSection, EstimatesSection, FinancialsSection, LockedFundamentals, LockedSection, NewsFilingsSection, OwnershipSection, PageMockBanner } from '@/components/company/sections';
+import { FundamentalsSection } from '@/components/company/fundamentals/FundamentalsSection';
+import { FundamentalsSkeleton } from '@/components/company/fundamentals/FundamentalsSkeleton';
+import { companyAccess, loadCore } from '@/components/company/server/data';
 import { registerDeepDive } from '@/components/company/server/deepDive';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +54,10 @@ export default async function CompanyPage({ params }: { params: { ticker: string
   const ticker = sanitizeTicker(raw);
   if (!ticker) return <NotFoundState raw={raw} />;
 
-  const core = await loadCore(ticker);
+  // Plan comes fresh from the DB (requireSessionUser); premium loaders are skipped entirely for Free users.
+  const access = companyAccess(user);
+  const canAdvanced = assertFeature(user, 'advancedCharts').allowed;
+  const core = await loadCore(ticker, access);
   if (!core.found) return <NotFoundState raw={ticker} />;
 
   const dd = await registerDeepDive(user, ticker);
@@ -62,26 +67,37 @@ export default async function CompanyPage({ params }: { params: { ticker: string
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
       <Suspense fallback={null}>
-        <PageMockBanner ticker={ticker} cik={cik} includeBody={allowed} />
+        <PageMockBanner ticker={ticker} cik={cik} includeBody={allowed} access={access} />
       </Suspense>
-      <div className="-mb-3 flex justify-end"><AutoRefresh everyMs={5 * 60_000} /></div>
+      <div className="-mb-3 flex justify-end"><AutoRefresh everyMs={60_000} /></div>
       <CompanyHeader core={core} canShare={assertFeature(user, 'sharing').allowed} />
       {!allowed ? (
         <DeepDiveLimitCard gate={dd.gate} ticker={ticker} />
       ) : (
         <>
           <Suspense fallback={<SectionSkeleton title="Price & events" height="h-[380px]" />}>
-            <ChartSection ticker={ticker} initialBars={core.bars1Y} barsMock={core.meta.isMock} />
+            <ChartSection ticker={ticker} initialBars={core.bars1Y} barsMock={core.meta.isMock} canAdvanced={canAdvanced} />
           </Suspense>
-          <Suspense fallback={<SectionSkeleton title="Financial statements" height="h-10" rows={9} />}>
-            <FinancialsSection ticker={ticker} cik={cik} />
-          </Suspense>
-          <Suspense fallback={<SectionSkeleton title="Analysis" height="h-64" />}>
-            <EstimatesSection ticker={ticker} price={core.quote?.price ?? null} />
-          </Suspense>
-          <Suspense fallback={<SectionSkeleton title="Ownership" height="h-10" rows={8} />}>
-            <OwnershipSection ticker={ticker} />
-          </Suspense>
+          {access.financials ? (
+            <Suspense fallback={<SectionSkeleton title="Financial statements" height="h-10" rows={9} />}>
+              <FinancialsSection ticker={ticker} cik={cik} />
+            </Suspense>
+          ) : <LockedSection feature="financials" />}
+          {access.financials ? (
+            <Suspense fallback={<FundamentalsSkeleton />}>
+              <FundamentalsSection ticker={ticker} />
+            </Suspense>
+          ) : <LockedFundamentals />}
+          {access.analystResearch ? (
+            <Suspense fallback={<SectionSkeleton title="Analysis" height="h-64" />}>
+              <EstimatesSection ticker={ticker} price={core.quote?.price ?? null} />
+            </Suspense>
+          ) : <LockedSection feature="analystResearch" />}
+          {access.ownership ? (
+            <Suspense fallback={<SectionSkeleton title="Ownership" height="h-10" rows={8} />}>
+              <OwnershipSection ticker={ticker} />
+            </Suspense>
+          ) : <LockedSection feature="ownership" />}
           <Suspense fallback={<SectionSkeleton title="News, filings & catalysts" height="h-72" />}>
             <NewsFilingsSection ticker={ticker} />
           </Suspense>

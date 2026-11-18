@@ -2,7 +2,7 @@
 /** Read-only renderers for each share snapshot type. */
 import * as React from 'react';
 import Link from 'next/link';
-import { Bot, Filter, User } from 'lucide-react';
+import { Bot, Filter, Lock, User } from 'lucide-react';
 import type { SourceRef } from '@/lib/data/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,31 @@ import { fmt, cn } from '@/lib/utils';
 import { Markdown } from './Markdown';
 import type { BasketSnapshot, CompanySnapshot, HoldingRow, NoteSnapshot, PortfolioSnapshot, ScreenSnapshot, ShareItemType, ThreadSnapshot } from './snapshot';
 
+/** Shown in place of premium share content for Free / signed-out viewers (content is redacted server-side). */
+function LockedShare({ what }: { what: string }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/40 bg-accent/15 text-accent"><Lock className="h-4 w-4" aria-hidden /></span>
+        <h2 className="text-base font-semibold">{what} is a Pro feature</h2>
+        <p className="max-w-sm text-xs text-muted">This shared item contains premium research. Upgrade to Pro ($100/mo) to view it.</p>
+        <Link href="/settings#plan" className="mt-1 inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-accent-foreground hover:bg-accent/90">Unlock with Pro</Link>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SnapshotView({ itemType, snapshot }: { itemType: ShareItemType; snapshot: Record<string, unknown> }) {
+  const locked = Array.isArray(snapshot.__locked) ? (snapshot.__locked as string[]) : [];
+  if (locked.includes('ai')) return <LockedShare what="AI research" />;
+  if (itemType === 'company' && locked.length) {
+    return (
+      <div className="space-y-4">
+        <CompanyView s={snapshot as unknown as CompanySnapshot} />
+        <LockedShare what="Financial statements and analyst research" />
+      </div>
+    );
+  }
   switch (itemType) {
     case 'note': return <NoteView s={snapshot as unknown as NoteSnapshot} />;
     case 'thread': return <ThreadView s={snapshot as unknown as ThreadSnapshot} />;

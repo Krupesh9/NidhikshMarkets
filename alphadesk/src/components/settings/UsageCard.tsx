@@ -37,7 +37,7 @@ export function UsageCard({ usage, plan }: { usage: UsageData; plan: Plan }) {
   const noAi = usage.aiLimit === 0;
   const atCap = usage.aiLimit != null && usage.aiLimit > 0 && usage.aiQueries >= usage.aiLimit;
   return (
-    <Card id="usage" className="scroll-mt-16">
+    <Card id="usage" className="scroll-mt-28">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><Gauge className="h-4 w-4 text-muted" aria-hidden /> Usage</CardTitle>
         <CardDescription>Period {usage.period} · AI counter resets monthly on {reset} (UTC). Deep dives reset daily.</CardDescription>
@@ -45,7 +45,7 @@ export function UsageCard({ usage, plan }: { usage: UsageData; plan: Plan }) {
       <CardContent className="space-y-4">
         <Meter label="AI research queries this month" used={usage.aiQueries} limit={usage.aiLimit} hint={usage.aiLimit == null ? `${PLAN_INFO[plan].label} includes unlimited AI queries.` : undefined} />
         <Meter label="Company deep dives today" used={usage.deepDivesToday} limit={usage.deepDiveLimit} />
-        {noAi && <UpgradeHint reason="AI research is not included on Free." upgradeTo="PRO" />}
+        {noAi && <UpgradeHint reason="The AI research assistant is part of Pro ($100/mo)." upgradeTo="PRO_PLUS" />}
         {atCap && <UpgradeHint reason={`You've used all ${usage.aiLimit} AI queries this month.`} upgradeTo="PRO_PLUS" />}
         {usage.org && (
           <p className="text-xs text-muted">Organisation this month: <span className="font-mono text-text">{usage.org.aiQueries}</span> AI queries across {usage.org.users} active {usage.org.users === 1 ? 'member' : 'members'}. <Link href="#audit" className="text-info hover:underline">See audit log</Link></p>

@@ -135,7 +135,7 @@ describe('schema + serialisation', () => {
     expect(saved.name).toBe('My screen');
     expect(saved.filters).toEqual({ pe: { max: 20 } });
     const back = fromSavedScreen(JSON.parse(JSON.stringify(saved)));
-    expect(back).toEqual({ filters: { pe: { max: 20 } }, columns: ['ticker', 'pe'], sort: [{ id: 'pe', desc: false }] });
+    expect(back).toEqual({ filters: { pe: { max: 20 } }, columns: ['ticker', 'pe'], sort: [{ id: 'pe', desc: false }], tickers: null, groups: {} });
   });
   it('migrates legacy seeded filter shapes', () => {
     const r = safeParseFilters({ insiderBuying90d: { min: 0 }, catalystFlags: { any: ['earnings', 'fda', 'bogus'] } });

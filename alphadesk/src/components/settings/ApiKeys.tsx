@@ -102,7 +102,7 @@ function KeyItem({ row, onKeys }: { row: KeyRow; onKeys: (k: KeyRow[]) => void }
 export function ApiKeys({ initial }: { initial: KeyRow[] }) {
   const [keys, setKeys] = React.useState(initial);
   return (
-    <Card id="keys" className="scroll-mt-16">
+    <Card id="keys" className="scroll-mt-28">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><KeyRound className="h-4 w-4 text-muted" aria-hidden /> AI provider &amp; data keys</CardTitle>
         <CardDescription>

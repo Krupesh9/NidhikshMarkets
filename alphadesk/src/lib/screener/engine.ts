@@ -5,7 +5,12 @@
  *   const { rows, total } = runScreen(allRows, state, sort, { maxFilters: 3, maxRows: 25, today });
  */
 import { z } from 'zod';
-import type { CatalystType, ScreenRow } from '@/lib/data/types';
+import type { CatalystType } from '@/lib/data/types';
+import type { LiveScreenRow } from './types';
+import { MAX_GROUP_LEN, sanitizeGroups, sanitizeTickers } from './list';
+
+/** Rows the engine works on: live rows (nullable metrics) — mock `ScreenRow`s are assignable too. */
+type Row = LiveScreenRow;
 
 // ───────────────────────────── schema ─────────────────────────────
 
@@ -37,7 +42,7 @@ export const RANGE_FIELDS = {
   esgScore: 'esgScore',
   changePct: 'changePct',
   price: 'price',
-} as const satisfies Record<string, keyof ScreenRow>;
+} as const satisfies Record<string, keyof Row>;
 export type RangeKey = keyof typeof RANGE_FIELDS;
 export const RANGE_KEYS = Object.keys(RANGE_FIELDS) as RangeKey[];
 
@@ -47,6 +52,8 @@ export const filterStateSchema = z.object({
   sector: z.array(z.string().max(60)).max(20).optional(),
   industry: z.array(z.string().max(80)).max(60).optional(),
   country: z.array(z.string().max(40)).max(40).optional(),
+  /** user-defined list group (e.g. "Technology") */
+  group: z.array(z.string().max(MAX_GROUP_LEN)).max(30).optional(),
   pe: rangeSchema.optional(),
   evEbitda: rangeSchema.optional(),
   revenueGrowth: rangeSchema.optional(),
@@ -67,8 +74,8 @@ export type FilterKey = keyof FilterState;
 
 export const SORTABLE_KEYS = [
   'ticker', 'name', 'sector', 'industry', 'country', 'marketCap', 'price', 'changePct', 'pe', 'evEbitda',
-  'revenueGrowth', 'epsRevision30d', 'shortInterestPct', 'insiderBuying90d', 'esgScore', 'nextEarnings',
-] as const satisfies readonly (keyof ScreenRow)[];
+  'revenueGrowth', 'epsRevision30d', 'shortInterestPct', 'insiderBuying90d', 'esgScore', 'nextEarnings', 'group',
+] as const satisfies readonly (keyof Row)[];
 export type SortKey = (typeof SORTABLE_KEYS)[number];
 export const sortSchema = z.array(z.object({ id: z.enum(SORTABLE_KEYS), desc: z.boolean() })).max(5);
 export type SortSpec = z.infer<typeof sortSchema>;
@@ -169,6 +176,7 @@ export function inRange(v: number | null | undefined, r: Range | undefined): boo
 }
 
 export function marketCapBucket(cap: number): MarketCapBucket {
+  if (!Number.isFinite(cap)) return 'micro';
   for (const b of MARKET_CAP_BUCKETS) {
     const { min, max } = MARKET_CAP_BOUNDS[b];
     if (cap >= min && cap < max) return b;
@@ -189,22 +197,26 @@ export function daysUntil(d: string, today: Date): number {
 const lc = (s: string) => s.toLowerCase();
 const inSet = (v: string, set: string[] | undefined) => !set?.length || set.some((x) => lc(x) === lc(v));
 
-export function matchesRow(row: ScreenRow, f: FilterState, today: Date = new Date()): boolean {
+/**
+ * Null/NaN metrics never satisfy a numeric filter ("n/a values excluded"), so an unavailable P/E is not a cheap P/E.
+ */
+export function matchesRow(row: Row, f: FilterState, today: Date = new Date()): boolean {
   if (f.q) {
     const q = lc(f.q);
-    const hay = `${row.ticker} ${row.name} ${row.industry} ${row.sector} ${row.whyNow?.headline ?? ''}`;
+    const hay = `${row.ticker} ${row.name} ${row.industry} ${row.sector} ${row.group ?? ''} ${row.whyNow?.headline ?? ''}`;
     if (!lc(hay).includes(q)) return false;
   }
-  if (f.marketCap?.length && !f.marketCap.includes(marketCapBucket(row.marketCap))) return false;
+  if (f.marketCap?.length && (row.marketCap == null || !Number.isFinite(row.marketCap) || !f.marketCap.includes(marketCapBucket(row.marketCap)))) return false;
   if (!inSet(row.sector, f.sector)) return false;
   if (!inSet(row.industry, f.industry)) return false;
   if (!inSet(row.country, f.country)) return false;
+  if (f.group?.length && !inSet(row.group ?? '', f.group)) return false;
   for (const k of RANGE_KEYS) {
     const r = f[k];
-    if (r && !inRange(row[RANGE_FIELDS[k]] as number, r)) return false;
+    if (r && !inRange(row[RANGE_FIELDS[k]], r)) return false;
   }
-  if (f.insiderBuying === true && !(row.insiderBuying90d > 0)) return false;
-  if (f.insiderBuying === false && !(row.insiderBuying90d < 0)) return false;
+  if (f.insiderBuying === true && !((row.insiderBuying90d ?? 0) > 0)) return false;
+  if (f.insiderBuying === false && !((row.insiderBuying90d ?? 0) < 0)) return false;
   if (f.earningsWithinDays != null) {
     const d = daysUntil(row.nextEarnings, today);
     if (!(d >= 0 && d <= f.earningsWithinDays)) return false;
@@ -226,14 +238,21 @@ function cmp(a: unknown, b: unknown): number {
 }
 
 /** Stable multi-key sort; missing values always sort last. Ticker is the final tiebreaker. */
-export function sortRows<T extends ScreenRow>(rows: T[], sort: SortSpec): T[] {
+export function sortRows<T extends Row>(rows: T[], sort: SortSpec): T[] {
   const keys = [...sort, { id: 'ticker' as SortKey, desc: false }];
+  // Groups sort in the user's own order (first appearance in the list), not alphabetically.
+  const groupRank = new Map<string, number>();
+  for (const r of rows) {
+    const g = (r as Row & { group?: string | null }).group;
+    if (g && !groupRank.has(g)) groupRank.set(g, groupRank.size);
+  }
+  const val = (r: T, id: SortKey) => (id === 'group' ? ((r[id] as string | null | undefined) ? groupRank.get(r[id] as string) ?? null : null) : r[id]);
   return rows
     .map((r, i) => ({ r, i }))
     .sort((x, y) => {
       for (const { id, desc } of keys) {
-        const a = x.r[id];
-        const b = y.r[id];
+        const a = val(x.r, id);
+        const b = val(y.r, id);
         const aMissing = a == null || a === '' || (typeof a === 'number' && !Number.isFinite(a));
         const bMissing = b == null || b === '' || (typeof b === 'number' && !Number.isFinite(b));
         if (aMissing !== bMissing) return aMissing ? 1 : -1;
@@ -270,7 +289,7 @@ export interface RunResult<T> {
   rowCapped: boolean;
 }
 
-export function runScreen<T extends ScreenRow>(all: T[], filters: FilterState, sort: SortSpec = DEFAULT_SORT, opts: RunOptions = {}): RunResult<T> {
+export function runScreen<T extends Row>(all: T[], filters: FilterState, sort: SortSpec = DEFAULT_SORT, opts: RunOptions = {}): RunResult<T> {
   const maxFilters = opts.maxFilters ?? Infinity;
   const maxRows = opts.maxRows ?? Infinity;
   const { applied, dropped } = capFilters(filters, maxFilters);
@@ -290,24 +309,49 @@ export function runScreen<T extends ScreenRow>(all: T[], filters: FilterState, s
 
 // ───────────────────────────── saved screens ─────────────────────────────
 
-export interface ScreenDefinition { filters: FilterState; columns: string[]; sort: SortSpec }
+export interface ScreenDefinition {
+  filters: FilterState;
+  columns: string[];
+  sort: SortSpec;
+  /** the screen's ticker list; null/absent = the user's default list (screens saved before lists existed) */
+  tickers?: string[] | null;
+  /** optional user group per ticker */
+  groups?: Record<string, string>;
+}
+
+/**
+ * The SavedScreen table has no list column, so the list rides inside the filters JSON under this reserved key
+ * (never a valid filter key: filter parsing strips it).
+ */
+export const LIST_KEY = '$list';
 
 /** Serialise to the SavedScreen repo input shape. */
 export function toSavedScreen(name: string, def: ScreenDefinition, description?: string | null) {
+  const filters = { ...normalizeFilters(def.filters) } as Record<string, unknown>;
+  if (def.tickers) {
+    const tickers = sanitizeTickers(def.tickers);
+    const groups = sanitizeGroups(def.groups ?? {}, tickers);
+    filters[LIST_KEY] = Object.keys(groups).length ? { tickers, groups } : { tickers };
+  }
   return {
     name: name.trim().slice(0, 80),
     description: description ?? null,
-    filters: normalizeFilters(def.filters) as Record<string, unknown>,
+    filters,
     columns: def.columns.slice(0, 40),
     sort: def.sort,
   };
 }
-/** Parse a SavedScreen DTO (or share snapshot) back into a definition; tolerant of bad data. */
-export function fromSavedScreen(s: { filters?: unknown; columns?: unknown; sort?: unknown }): ScreenDefinition {
+/** Parse a SavedScreen DTO (or share snapshot) back into a definition; tolerant of bad data and old screens. */
+export function fromSavedScreen(s: { filters?: unknown; columns?: unknown; sort?: unknown }): ScreenDefinition & { tickers: string[] | null; groups: Record<string, string> } {
+  const rawList = s.filters && typeof s.filters === 'object' ? (s.filters as Record<string, unknown>)[LIST_KEY] : undefined;
+  const list = rawList && typeof rawList === 'object' && Array.isArray((rawList as { tickers?: unknown }).tickers) ? (rawList as { tickers: unknown[]; groups?: unknown }) : null;
+  const tickers = list ? sanitizeTickers(list.tickers) : null;
   return {
     filters: parseFilters(s.filters),
     columns: Array.isArray(s.columns) ? s.columns.filter((c): c is string => typeof c === 'string') : [],
     sort: parseSort(s.sort),
+    tickers,
+    groups: tickers ? sanitizeGroups(list?.groups, tickers) : {},
   };
 }
 
@@ -337,11 +381,11 @@ export const PRESETS: Preset[] = [
     sort: [{ id: 'insiderBuying90d', desc: true }],
   },
   {
-    id: 'short-squeeze',
-    label: 'Short squeeze watch',
-    description: 'Highest short interest in the universe (≥ 1.5% of float) with upward EPS revisions.',
-    filters: { shortInterestPct: { min: 1.5 }, epsRevision30d: { min: 0 } },
-    sort: [{ id: 'shortInterestPct', desc: true }],
+    id: 'earnings-soon',
+    label: 'Reporting soon',
+    description: 'Earnings within the next 30 days, biggest companies first.',
+    filters: { earningsWithinDays: 30 },
+    sort: [{ id: 'nextEarnings', desc: false }],
   },
   {
     id: 'cheap-growth',
@@ -353,7 +397,7 @@ export const PRESETS: Preset[] = [
 ];
 
 export const FILTER_LABELS: Record<FilterKey, string> = {
-  q: 'Search', marketCap: 'Market cap', sector: 'Sector', industry: 'Industry', country: 'Country',
+  q: 'Search', marketCap: 'Market cap', sector: 'Sector', industry: 'Industry', country: 'Country', group: 'Group',
   pe: 'P/E', evEbitda: 'EV/EBITDA', revenueGrowth: 'Revenue growth %', epsRevision30d: 'EPS revision 30d %',
   shortInterestPct: 'Short interest %', esgScore: 'ESG score', changePct: 'Day change %', price: 'Price',
   insiderBuying: 'Insider activity 90d', earningsWithinDays: 'Earnings within', catalysts: 'Catalysts',

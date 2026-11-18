@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { withApi, notFound, upgradeRequired } from '@/lib/http';
+import { withApi, notFound, upgradeRequired, requireFeature, ApiError } from '@/lib/http';
+import { mockAllowed } from '@/lib/data/mock-policy';
 import { researchRepo } from '@/lib/repos';
 import { getUsage, incrementAiQueries } from '@/lib/usage';
 import { getMarketData } from '@/lib/data';
 import { sanitizeText, sanitizeTicker } from '@/lib/sanitize';
 import { audit } from '@/lib/audit';
-import { getProvider, runAgent } from '@/lib/ai';
+import { getProvider, resolveProvider, runAgent } from '@/lib/ai';
 import { authorizeAiQuery } from '@/lib/ai/gate';
 import { findTickers, threadTitle } from '@/lib/ai/intent';
 import type { AgentResult } from '@/lib/ai/agent';
@@ -23,10 +24,11 @@ const body = z.object({
 /**
  * POST /api/ai/chat  { threadId?, message, context?: { ticker? } }
  * → text/event-stream of ChatStreamEvent (`data: {json}\n\n`): meta, tool, text, block, citations, done | error.
- * FREE → 402 upgrade_required (render <UpgradeHint/>). PRO counts 1 query per request.
+ * FREE → 403 upgrade_required (the client opens the upgrade dialog). Pro counts 1 query per request.
  */
 export const POST = withApi(
   async ({ user, body: b, req, correlationId, log }) => {
+    requireFeature(user, 'ai'); // plan read fresh from the DB; checked before any thread lookup or quota use
     const scope = { orgId: user.orgId, userId: user.id };
     const ticker = b.context?.ticker ? sanitizeTicker(b.context.ticker) ?? undefined : undefined;
     const question = sanitizeText(b.message, 4000);
@@ -34,6 +36,11 @@ export const POST = withApi(
     // Thread (validate before consuming quota)
     let thread = b.threadId ? await researchRepo.getThread(scope, b.threadId) : null;
     if (b.threadId && (!thread || thread.userId !== user.id)) throw notFound('Thread not found');
+
+    // Production never answers with the canned Mock LLM: without a real key the assistant is unavailable (no quota used).
+    if (!mockAllowed() && (await resolveProvider(user)).id === 'mock') {
+      throw new ApiError(503, 'ai_not_configured', 'The AI assistant is not configured on this deployment yet. Ask the owner to add an Anthropic or Gemini key, or add your own in Settings → AI keys.');
+    }
 
     const auth = await authorizeAiQuery(user, {
       getUsed: async () => (await getUsage(user)).aiQueries,

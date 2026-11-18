@@ -106,7 +106,7 @@ function CreatePortfolioDialog({ open, onOpenChange, onCreated }: { open: boolea
   const [desc, setDesc] = React.useState('');
   const [bench, setBench] = React.useState('SPY');
   const [busy, setBusy] = React.useState(false);
-  const [gate, setGate] = React.useState<{ reason: string; upgradeTo?: 'PRO' | 'PRO_PLUS' } | null>(null);
+  const [gate, setGate] = React.useState<{ reason: string; upgradeTo?: 'PRO_PLUS' } | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -117,8 +117,8 @@ function CreatePortfolioDialog({ open, onOpenChange, onCreated }: { open: boolea
       onOpenChange(false); setName(''); setDesc('');
       onCreated(r.portfolio.id);
     } catch (err) {
-      const e2 = err as Error & { status?: number; details?: { upgradeTo?: 'PRO' | 'PRO_PLUS' } };
-      if (e2.status === 402) setGate({ reason: e2.message, upgradeTo: e2.details?.upgradeTo });
+      const e2 = err as Error & { status?: number; details?: { upgradeTo?: 'PRO_PLUS' } };
+      if ((e2 as { code?: string }).code === 'upgrade_required' || e2.status === 402) setGate({ reason: e2.message, upgradeTo: e2.details?.upgradeTo });
       else toast({ title: 'Could not create portfolio', description: e2.message, variant: 'error' });
     } finally { setBusy(false); }
   }

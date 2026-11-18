@@ -2,6 +2,7 @@ import { withApi, forbidden, notFound } from '@/lib/http';
 import { shareRepo } from '@/lib/repos';
 import { db } from '@/lib/db';
 import { audit } from '@/lib/audit';
+import { redactSnapshot } from '@/components/sharing/redact';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ export const GET = withApi(
     const sameOrg = !!user && user.orgId === share.orgId;
     if (user) audit({ orgId: user.orgId, userId: user.id, action: 'share.view', target: share.token });
     return {
-      share: { ...share, orgId: undefined },
+      share: { ...share, orgId: undefined, snapshot: redactSnapshot(share.itemType, share.snapshot, user) },
       viewer: { signedIn: !!user, canComment: sameOrg, canDelete: sameOrg && (user!.id === share.createdById || user!.role === 'ADMIN') },
     };
   },

@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from '@/lib/cache';
 import { log } from '@/lib/log';
+import { meteredFetch } from '@/lib/usage-meter';
 
 /**
  * Index constituents from free, daily, public sources (no keys):
@@ -233,7 +234,7 @@ export function sectorWeights(holdings: { ticker: string; weight: number }[], se
 /* --------------------------------- fetching -------------------------------- */
 
 async function fetchOk(url: string, accept: string): Promise<Response> {
-  const r = await fetch(url, { headers: { 'user-agent': BROWSER_UA, accept, 'accept-language': 'en-US,en;q=0.9' }, cache: 'no-store', redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT) });
+  const r = await meteredFetch('holdings', url, { headers: { 'user-agent': BROWSER_UA, accept, 'accept-language': 'en-US,en;q=0.9' }, cache: 'no-store', redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r;
 }

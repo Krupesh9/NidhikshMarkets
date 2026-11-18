@@ -5,6 +5,7 @@ import { rangePosition } from './lib/helpers';
 import { MetricButton } from './MetricButton';
 import { HeaderActions } from './HeaderActions';
 import { CompanyLogo } from '@/components/ui/company-logo';
+import { LockedButton } from '@/components/billing/UpgradeDialog';
 
 function KeyStat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -13,6 +14,11 @@ function KeyStat({ label, children }: { label: string; children: React.ReactNode
       <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums">{children}</div>
     </div>
   );
+}
+
+/** Locked header metric: no value is sent; click opens the upgrade dialog. */
+function LockedValue({ feature }: { feature: 'analystResearch' | 'financials' }) {
+  return <LockedButton feature={feature} className="rounded font-sans text-xs font-medium text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">•••</LockedButton>;
 }
 
 /** Deep-dive header: monogram, identity, price + change, key multiples, 52-week range, actions. */
@@ -63,16 +69,22 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
             <MetricButton source={sources.pe} highlight={valuation.pe ? `${valuation.pe.toFixed(1)}x` : undefined} label="P/E">{fmt.multiple(valuation.pe)}</MetricButton>
           </KeyStat>
           <KeyStat label="Fwd P/E">
-            <MetricButton source={sources.fwdPe} highlight={forward.pe ? `${forward.pe.toFixed(1)}x` : undefined} label="Forward P/E">{fmt.multiple(forward.pe)}</MetricButton>
+            {forward && sources.fwdPe
+              ? <MetricButton source={sources.fwdPe} highlight={forward.pe ? `${forward.pe.toFixed(1)}x` : undefined} label="Forward P/E">{fmt.multiple(forward.pe)}</MetricButton>
+              : <LockedValue feature="analystResearch" />}
           </KeyStat>
           <KeyStat label="EPS (TTM)">
             <MetricButton source={{ ...sources.pe, id: `${sources.pe.id}:eps`, excerpt: valuation.epsBasis, locator: 'Diluted EPS, trailing 12 months' }} highlight={valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : undefined} label="EPS (TTM)">{valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : '—'}</MetricButton>
           </KeyStat>
           <KeyStat label="Fwd EPS">
-            <MetricButton source={sources.fwdEps} highlight={forward.eps != null ? `$${forward.eps.toFixed(2)}` : undefined} label="Forward EPS">{forward.eps != null ? `$${forward.eps.toFixed(2)}` : '—'}</MetricButton>
+            {forward && sources.fwdEps
+              ? <MetricButton source={sources.fwdEps} highlight={forward.eps != null ? `$${forward.eps.toFixed(2)}` : undefined} label="Forward EPS">{forward.eps != null ? `$${forward.eps.toFixed(2)}` : '—'}</MetricButton>
+              : <LockedValue feature="analystResearch" />}
           </KeyStat>
           <KeyStat label="EV/EBITDA">
-            <MetricButton source={sources.evEbitda} highlight={valuation.evEbitda ? `${valuation.evEbitda.toFixed(1)}x` : undefined} label="EV/EBITDA">{fmt.multiple(valuation.evEbitda)}</MetricButton>
+            {sources.evEbitda
+              ? <MetricButton source={sources.evEbitda} highlight={valuation.evEbitda ? `${valuation.evEbitda.toFixed(1)}x` : undefined} label="EV/EBITDA">{fmt.multiple(valuation.evEbitda)}</MetricButton>
+              : <LockedValue feature="financials" />}
           </KeyStat>
           <KeyStat label="Volume">{quote ? fmt.compact(quote.volume) : '—'}</KeyStat>
         </div>

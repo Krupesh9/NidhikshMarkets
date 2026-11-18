@@ -7,6 +7,7 @@ import { audit } from '@/lib/audit';
 import { Logo } from '@/components/shell/Logo';
 import { Button } from '@/components/ui/button';
 import { SharedItemPage } from '@/components/sharing/SharedItemPage';
+import { redactSnapshot } from '@/components/sharing/redact';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export default async function Page({ params }: { params: { token: string } }) {
   return (
     <SharedItemPage
       share={{
-        id: share.id, token: share.token, itemType: share.itemType, itemId: share.itemId, title: share.title, snapshot: share.snapshot,
+        id: share.id, token: share.token, itemType: share.itemType, itemId: share.itemId, title: share.title, snapshot: redactSnapshot(share.itemType, share.snapshot, user),
         createdByName: share.createdByName, visibility: share.visibility, createdAt: share.createdAt.toISOString(), expiresAt: share.expiresAt?.toISOString() ?? null,
       }}
       comments={(share.comments ?? []).map((c) => ({ id: c.id, authorId: c.authorId, authorName: c.authorName, body: c.body, createdAt: c.createdAt.toISOString() }))}

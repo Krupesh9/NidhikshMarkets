@@ -3,7 +3,8 @@ import * as React from 'react';
 import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 import { Bot, FlaskConical, LogOut, Search, Settings, Database, Keyboard } from 'lucide-react';
-import { PLAN_INFO, formatLimit } from '@/lib/plans';
+import { PLAN_INFO, formatLimit, hasFeature } from '@/lib/plans';
+import { ProChip } from '@/components/billing/UpgradeDialog';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,10 +13,11 @@ import { Tip } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useCurrentUser } from './UserContext';
 import { Logo } from './Logo';
+import { useApiUsage } from '@/components/settings/useApiUsage';
 
 export function PlanBadge() {
   const { user } = useCurrentUser();
-  const v = user.plan === 'PRO_PLUS' ? 'accent' : user.plan === 'PRO' ? 'info' : 'outline';
+  const v = user.plan === 'PRO_PLUS' ? 'accent' : 'outline';
   return <Badge variant={v}>{PLAN_INFO[user.plan].label}</Badge>;
 }
 
@@ -26,7 +28,7 @@ export function UsageMeter({ className }: { className?: string }) {
   const label = limit === 0 ? 'AI not included on Free' : `${usage.aiQueries} / ${formatLimit(limit)} AI queries this month`;
   return (
     <Tip content={label}>
-      <Link href="/settings#usage" className={cn('hidden items-center gap-2 rounded px-1.5 py-1 text-[11px] text-muted hover:bg-panel-2 lg:flex', className)} aria-label={label}>
+      <Link href={user.canSettings ? "/settings#usage" : "#"} className={cn('hidden items-center gap-2 rounded px-1.5 py-1 text-[11px] text-muted hover:bg-panel-2 lg:flex', className)} aria-label={label}>
         <Bot className="h-3.5 w-3.5" aria-hidden />
         <span className="font-mono tabular-nums">{limit === 0 ? '—' : limit === Infinity ? `${usage.aiQueries} / ∞` : `${usage.aiQueries}/${limit}`}</span>
         {limit !== Infinity && (
@@ -40,15 +42,25 @@ export function UsageMeter({ className }: { className?: string }) {
 }
 
 export function MockIndicator() {
-  const { dataMode } = useCurrentUser();
-  return (
-    <Tip content={`Data sources: ${dataMode.providers.join(' → ')}`}>
-      <span className={cn('hidden items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] sm:inline-flex', dataMode.isMock ? 'border-warn/40 bg-warn/10 text-warn' : 'border-up/40 bg-up/10 text-up')}>
-        {dataMode.isMock ? <FlaskConical className="h-3 w-3" aria-hidden /> : <Database className="h-3 w-3" aria-hidden />}
-        {dataMode.label}
-      </span>
-    </Tip>
+  const { dataMode, user } = useCurrentUser();
+  // ADMIN/owner only: amber dot when a data provider's API limit is reached or the provider is rejecting calls
+  const alerts = useApiUsage(user.role === 'ADMIN' && user.canSettings !== false, 60_000).data?.alerts ?? [];
+  const pill = (
+    <span className={cn('relative hidden items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] sm:inline-flex', dataMode.isMock ? 'border-warn/40 bg-warn/10 text-warn' : 'border-up/40 bg-up/10 text-up')}>
+      {dataMode.isMock ? <FlaskConical className="h-3 w-3" aria-hidden /> : <Database className="h-3 w-3" aria-hidden />}
+      {dataMode.label}
+      {alerts.length > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-warn ring-2 ring-bg" aria-hidden />}
+    </span>
   );
+  if (alerts.length) {
+    const msg = alerts.map((a) => a.message).join(' · ');
+    return (
+      <Tip content={<>{msg}<div className="text-muted">Open Settings → Data sources</div></>}>
+        <Link href="/settings#api-usage" aria-label={`API limit warning: ${msg}`} className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info">{pill}</Link>
+      </Tip>
+    );
+  }
+  return <Tip content={`Data sources: ${dataMode.providers.join(' → ')}`}>{pill}</Tip>;
 }
 
 export function Topbar({ onSearch, onChat, onShortcuts }: { onSearch: () => void; onChat: () => void; onShortcuts: () => void }) {
@@ -69,8 +81,9 @@ export function Topbar({ onSearch, onChat, onShortcuts }: { onSearch: () => void
         <MockIndicator />
         <UsageMeter />
         <PlanBadge />
-        <Button variant="secondary" size="sm" onClick={onChat} aria-label="Open AI research chat (⌘J)">
-          <Bot /> <span className="hidden sm:inline">Ask AI</span> <Kbd className="hidden lg:inline-flex">⌘J</Kbd>
+        <Button variant="secondary" size="sm" onClick={onChat} aria-label={hasFeature(user, 'ai') ? 'Open AI research chat (⌘J)' : 'AI research chat — locked, Pro feature'}>
+          <Bot /> <span className="hidden sm:inline">Ask AI</span>
+          {hasFeature(user, 'ai') ? <Kbd className="hidden lg:inline-flex">⌘J</Kbd> : <ProChip />}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-full bg-panel-2 text-xs font-semibold text-text ring-1 ring-border hover:ring-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info" aria-label="User menu">
@@ -82,7 +95,7 @@ export function Topbar({ onSearch, onChat, onShortcuts }: { onSearch: () => void
               <div className="truncate text-[11px] font-normal text-muted">{user.email} · {user.role}</div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>
+            {user.canSettings && <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>}
             <DropdownMenuItem onSelect={onShortcuts}><Keyboard /> Keyboard shortcuts</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => signOut({ callbackUrl: '/login' })}><LogOut /> Sign out</DropdownMenuItem>

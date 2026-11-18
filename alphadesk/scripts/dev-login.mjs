@@ -3,12 +3,17 @@
  * Get a session cookie for API testing against the local dev server.
  *   node scripts/dev-login.mjs pm@nidhikshdesk.dev            -> prints "Cookie: next-auth.session-token=..."
  *   node scripts/dev-login.mjs analyst@nidhikshdesk.dev --raw  -> prints only the cookie pair (for curl -b)
+ *   ND_PASSWORD=... node scripts/dev-login.mjs owner@example.com   -> owner (password) sign-in; or --password <pw>
+ *   ND_BASE_URL=http://127.0.0.1:4300 node scripts/dev-login.mjs ...  -> another server
  * Usage with curl:
  *   curl -s -H "$(node scripts/dev-login.mjs pm@nidhikshdesk.dev)" http://127.0.0.1:4200/api/me
  * Flow: GET /api/auth/csrf -> POST /api/auth/callback/credentials (NextAuth credentials provider).
  */
 const email = process.argv[2] ?? 'pm@nidhikshdesk.dev';
 const raw = process.argv.includes('--raw');
+const pwIdx = process.argv.indexOf('--password');
+// Prefer ND_PASSWORD (keeps the password out of shell history / process list).
+const password = process.env.ND_PASSWORD ?? (pwIdx > 0 ? process.argv[pwIdx + 1] : undefined) ?? '';
 const base = process.env.ND_BASE_URL ?? 'http://127.0.0.1:4200';
 
 const cookies = new Map();
@@ -31,10 +36,10 @@ const res = await fetch(`${base}/api/auth/callback/credentials`, {
   method: 'POST',
   redirect: 'manual',
   headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: header() },
-  body: new URLSearchParams({ csrfToken, email, json: 'true', callbackUrl: `${base}/dashboard` }),
+  body: new URLSearchParams({ csrfToken, email, password, json: 'true', callbackUrl: `${base}/dashboard` }),
 });
 keep(res);
 const name = [...cookies.keys()].find((k) => k.endsWith('next-auth.session-token'));
-if (!name) { console.error(`login failed for ${email} (HTTP ${res.status}). Is the user seeded? (npm run db:seed)`); process.exit(1); }
+if (!name) { console.error(`login failed for ${email} (HTTP ${res.status}${res.status === 429 ? ', rate limited' : ''}). Is the user seeded (npm run db:seed) or is a password needed (ND_PASSWORD)?`); process.exit(1); }
 const pair = `${name}=${cookies.get(name)}`;
 console.log(raw ? pair : `Cookie: ${pair}`);
