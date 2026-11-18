@@ -27,5 +27,7 @@ export function sanitizeTicker(s: unknown): string | null {
 /** Neutralise CSV/Excel formula injection. */
 export function csvSafe(v: unknown): string {
   const s = v == null ? '' : String(v);
+  // Plain numbers (incl. negatives) are safe; only formula-like text gets neutralised.
+  if (/^-?\d+(\.\d+)?(e[-+]?\d+)?$/i.test(s)) return s;
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 }

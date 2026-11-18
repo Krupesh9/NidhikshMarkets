@@ -74,7 +74,9 @@ export function withApi<B extends z.ZodTypeAny | undefined = undefined, Q extend
 
       if (opts.rateLimit !== false) {
         const name = opts.rateLimit ?? 'default';
-        const who = user?.id ?? req.headers.get('x-forwarded-for') ?? req.ip ?? 'anon';
+        // Only trust X-Forwarded-For behind a known proxy (TRUST_PROXY=1); clients can spoof it otherwise.
+        const fwd = process.env.TRUST_PROXY === '1' ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() : undefined;
+        const who = user?.id ?? fwd ?? req.ip ?? 'anon';
         const r = getLimiter(name).take(`${name}:${who}`);
         if (!r.allowed) {
           const res = NextResponse.json({ error: { code: 'rate_limited', message: `Too many requests. Retry in ${r.retryAfterSec}s.` } }, { status: 429 });

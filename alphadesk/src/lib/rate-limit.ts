@@ -14,7 +14,11 @@ class TokenBucket implements RateLimiter {
     const b = this.buckets.get(key) ?? { tokens: this.o.capacity, ts: now };
     b.tokens = Math.min(this.o.capacity, b.tokens + ((now - b.ts) / 1000) * this.o.refillPerSec);
     b.ts = now;
-    if (this.buckets.size > 10_000) this.buckets.clear();
+    if (this.buckets.size > 10_000) {
+      // Evict the oldest 10% instead of resetting everyone's limits.
+      let n = 1_000;
+      for (const k of this.buckets.keys()) { if (n-- <= 0) break; this.buckets.delete(k); }
+    }
     if (b.tokens >= 1) {
       b.tokens -= 1;
       this.buckets.set(key, b);

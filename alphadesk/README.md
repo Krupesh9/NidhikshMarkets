@@ -1,0 +1,271 @@
+# NidhikshDesk
+
+> Formerly **AlphaDesk**. Some identifiers keep the old name (`ALPHADESK_FORCE_MOCK`, the `alphadesk/` folder).
+
+NidhikshDesk is a Bloomberg-inspired **research and decision workspace** for hedge fund PMs and equity analysts.
+It brings company deep dives, AI research with citations, a screener, portfolio and basket analytics, and team sharing
+into one keyboard-driven, dark-first terminal.
+
+**Phase One is research only.** There is no trading, order routing, broker integration or execution, and nothing in
+the app is investment advice. Every number carries a source, and every screen that shows simulated data is labelled
+**Mock**.
+
+The local demo runs with **no external dependencies**: SQLite, a deterministic 50-stock mock universe and a mock AI
+provider. Real data and real AI switch on when you add keys.
+
+- Product brief: [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md)
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- Rules for contributors and agents: [`docs/BUILD_CONTRACT.md`](docs/BUILD_CONTRACT.md)
+
+---
+
+## Quick start
+
+Requires Node 20+ (22 recommended) and npm. You don't need Docker.
+
+```bash
+cd alphadesk
+npm install
+cp .env.example .env          # then set NEXTAUTH_SECRET and ENCRYPTION_KEY (see below)
+npm run db:push && npm run db:seed
+npm run dev                   # http://localhost:4200  (binds 127.0.0.1:4200)
+```
+
+Generate the two required secrets:
+
+```bash
+openssl rand -base64 32   # NEXTAUTH_SECRET
+openssl rand -base64 32   # ENCRYPTION_KEY (must decode to exactly 32 bytes)
+```
+
+### Demo logins
+
+Sign-in uses a dev "magic link": enter a seeded email on `/login` and you're signed in. The simulated link is
+written to the server console. No email is sent.
+
+| Email | Name | Role | Plan |
+|---|---|---|---|
+| `pm@nidhikshdesk.dev` | Priya Mehta | ADMIN | **Pro Plus** |
+| `analyst@nidhikshdesk.dev` | Alex Chen | ANALYST | **Pro** |
+| `intern@nidhikshdesk.dev` | Jordan Lee | VIEWER | **Free** |
+
+All three belong to the seeded org **Demo Capital** (5 seats). The seed also creates watchlists, two portfolios
+(*Core Long/Short*, *AI Infrastructure*), a basket, research notes with citations and saved screens.
+
+To get a session cookie for API testing:
+
+```bash
+curl -s -H "$(node scripts/dev-login.mjs pm@nidhikshdesk.dev)" http://127.0.0.1:4200/api/me
+```
+
+---
+
+## Environment variables
+
+Every provider key is optional. If a key is missing, the app uses local or mock data. Never commit `.env`.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXTAUTH_SECRET` | **yes** | Signs the NextAuth JWT session cookie. |
+| `NEXTAUTH_URL` | yes | Public base URL, `http://localhost:4200` locally. |
+| `DATABASE_URL` | yes | `file:./dev.db` (SQLite, relative to `prisma/`). Phase two: `postgresql://…` |
+| `ENCRYPTION_KEY` | **yes** | 32-byte base64 key for AES-256-GCM encryption of user-supplied API keys. |
+| `MASSIVE_API_KEY` | no | Massive (formerly Polygon.io) REST key. Tries `api.massive.com` first, then `api.polygon.io`. Sent as a Bearer header, never in a URL. |
+| `POLYGON_API_KEY` | no | Legacy alias for `MASSIVE_API_KEY`. `MASSIVE_API_KEY` wins if both are set. |
+| `SEC_USER_AGENT` | no | Enables live SEC EDGAR (filings, company facts). SEC fair-access policy requires a contact string such as `"NidhikshDesk research you@example.com"`. |
+| `NIDHIKSH_DB_PATH` | no | Path to the Nidhiksh Markets local cache (`runtime/market.sqlite`). Opened **read-only**. Skipped if the file doesn't exist. |
+| `ALPHADESK_FORCE_MOCK` | no | `1` skips every real provider and serves only the mock universe. Used for demos, tests and CI. |
+| `ANTHROPIC_API_KEY` | no | Claude provider for AI research. |
+| `ANTHROPIC_MODEL` | no | Default `claude-opus-5-5`. |
+| `GEMINI_API_KEY` | no | Gemini provider for AI research. |
+| `GEMINI_MODEL` | no | Default `gemini-2.5-pro`. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | Turns on Google sign-in. The `/login` button only appears when both are set. New Google users join the first org as VIEWER on Free. |
+
+Users can also save their own Anthropic/Gemini keys in **Settings → AI keys**. These are stored encrypted per user and
+take precedence over env keys. If neither is available, the **Mock AI provider** answers with realistic canned
+synthesis and citations.
+
+---
+
+## Data provider chain
+
+All market data goes through one server-side entry point, `getMarketData()` in `src/lib/data`. Each call tries the
+providers below in order, and the first one that returns non-empty data wins:
+
+1. **Massive (Polygon)**: when `MASSIVE_API_KEY`/`POLYGON_API_KEY` is set.
+2. **Nidhiksh local cache**: read-only `better-sqlite3` on `NIDHIKSH_DB_PATH` (daily split-adjusted bars, SEC
+   fundamentals, news, filings).
+3. **SEC EDGAR**: live filings and company facts when `SEC_USER_AGENT` is set.
+4. **Mock**: a deterministic, seeded 50-stock universe across all 11 GICS sectors.
+
+A provider that throws or returns empty data is skipped. The UI never sees an exception. If nothing has data, the
+result is `null`/`[]`, marked `isMock: true, provider: 'none'`. Every result has the shape
+`{ data, meta: { source[], isMock, asOf, provider } }`.
+
+**Mock labelling:** any screen whose data has `meta.isMock` shows `<MockBanner/>`. The topbar indicator shows the
+active mode: *Mock data*, *Mixed: local + mock* or *Live data*. Mock sources have ids like `mock:filing:NVDA:10-K:2025`
+and are named "(simulated)".
+
+---
+
+## Plans and mock billing
+
+| | Free | Pro | Pro Plus |
+|---|---|---|---|
+| Price | $0 | **$50/mo or $500/yr** | **$100/mo or $1,000/yr** |
+| AI research queries | none | 100 / month | unlimited |
+| Company deep dives | 3 / day | unlimited | unlimited |
+| Portfolio positions | 5 | 50 | unlimited |
+| Workspaces / seats | 1 / 1 | 1 / 1 | unlimited / 5 |
+| Sharing and export | no | yes | yes |
+| Custom basket sharing, priority refresh, team | no | no | yes |
+
+Gates are enforced on the server (`assertFeature`, `checkLimit` in `src/lib/plans.ts`). They return
+`{ allowed, reason, upgradeTo }`, and the UI shows an inline `<UpgradeHint/>`. It never blocks with a modal. AI usage
+is counted per user per **UTC calendar month**, and deep dives per UTC day.
+
+**Mock billing:** Stripe isn't wired up. **Settings → Plan** has a plan toggle (`POST /api/settings/plan`) that
+changes your plan immediately. No payment is taken, and each change is written to the audit log with `demo: true`.
+
+---
+
+## Architecture overview
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[App Router pages<br/>shell · rail · ⌘K · ⌘J chat]
+  end
+  subgraph Next.js server :4200
+    MW[middleware.ts<br/>session gate]
+    API[Route handlers<br/>withApi: auth · CSRF · zod · rate limit · audit]
+    AI[AI orchestrator<br/>Claude · Gemini · Mock<br/>tool calling]
+    MD[getMarketData<br/>composite provider]
+    REPO[Repositories<br/>org-scoped]
+    PLAT[plans · usage · cache · jobs · crypto · log]
+  end
+  subgraph Data
+    SQL[(SQLite dev.db<br/>Prisma)]
+    MAS[Massive / Polygon]
+    NID[(Nidhiksh cache<br/>read-only)]
+    SEC[SEC EDGAR]
+    MOCK[Mock universe]
+  end
+  UI --> MW --> API
+  UI -- SSE --> AI
+  API --> REPO --> SQL
+  API --> MD
+  AI --> MD
+  AI --> REPO
+  API --> PLAT
+  MD --> MAS
+  MD --> NID
+  MD --> SEC
+  MD --> MOCK
+```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for layers, interfaces and security.
+
+---
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server on `127.0.0.1:4200` |
+| `npm run build` / `npm start` | Production build, then serve on `127.0.0.1:4200` |
+| `npm run typecheck` | `tsc --noEmit` (strict) |
+| `npm test` | Vitest unit tests |
+| `npm run db:push` | Apply `prisma/schema.prisma` to the database |
+| `npm run db:seed` | Reset and seed the demo org, users and content |
+| `npm run db:generate` | Regenerate the Prisma client |
+| `node scripts/dev-login.mjs <email> [--raw]` | Print a session cookie for curl |
+| `bash tests/smoke.sh` | Smoke-test pages and APIs on a running server |
+
+## Testing
+
+```bash
+npm test                      # unit tests (forces mock data; no network, no DB)
+npx tsc --noEmit
+bash tests/smoke.sh           # needs `npm run dev` running and a seeded DB
+ND_EMAIL=intern@nidhikshdesk.dev bash tests/smoke.sh   # as the Free user
+```
+
+The platform critical-path tests live in `src/lib/__tests__/platform-*.test.ts`. They cover:
+
+- session user shape and the middleware protection matrix
+- plan gates
+- monthly and daily usage reset
+- AES-256-GCM round-trip and tamper detection
+- CSRF
+- the token-bucket rate limiter
+- sanitizers
+- the composite provider fallback order and mock labelling
+- the shortcut registry
+
+Feature tests sit next to each feature under `src/**/__tests__`. `tests/smoke.sh` exits with the number of failed
+checks. CI (`.github/workflows/nidhikshdesk-ci.yml` at the repo root) runs typecheck, tests, build and the smoke test
+with `ALPHADESK_FORCE_MOCK=1`.
+
+## Keyboard shortcuts
+
+Press `?` anywhere to open the overlay. The registry is in `src/lib/shortcuts.ts`.
+
+| Keys | Action |
+|---|---|
+| `⌘K` / `Ctrl K` | Search tickers and commands |
+| `⌘J` / `Ctrl J` | Toggle AI research chat (every screen) |
+| `⌘B` / `Ctrl B` | Collapse or expand the sidebar |
+| `?` | Show keyboard shortcuts |
+| `Esc` | Close panels and the right rail |
+| `G` `D` / `R` / `S` / `P` / `B` / `H` / `,` | Go to Dashboard / Research / Screener / Portfolios / Baskets / Shared / Settings |
+
+Single-key and `G` sequences are ignored while you're typing in an input. `⌘` combos work everywhere.
+
+---
+
+## Running alongside the other Nidhiksh apps
+
+Three local apps can run side by side on this Mac. Each has its own ports and its own database:
+
+| App | Frontend | Backend | Location |
+|---|---|---|---|
+| Nidhiksh Markets (classic) | 3000 | 8000 | `../frontend`, `../backend` |
+| Nidhiksh Pulse | 3100 | 8100 | separate checkout |
+| **NidhikshDesk** | **4200** | (same Next.js process) | `alphadesk/` |
+
+NidhikshDesk only **reads** the classic app's market cache (`NIDHIKSH_DB_PATH`), and it opens it with
+`readonly: true` and `query_only`. It never writes to it and never calls the other apps' ports. In Docker it also
+uses separate ports: Postgres on 5433 and Redis on 6380.
+
+## Docker (phase two)
+
+You don't need Docker for the local demo. `docker-compose.yml` brings up Postgres 16 + pgvector (`db`), Redis
+(`redis`) and the app built from the multi-stage `Dockerfile`. The image is built with
+`PRISMA_SCHEMA=prisma/postgres/schema.prisma`. An optional `worker` placeholder runs under `--profile worker`.
+
+```bash
+docker compose up --build
+docker compose exec app npm run db:seed
+```
+
+`vercel.json` is set up for a Postgres-backed deploy. SQLite can't run on Vercel's read-only filesystem.
+
+## Known limitations
+
+- **Postgres isn't a drop-in swap yet.** The repos store JSON as strings (`toJson`/`parseJson`) to match the SQLite
+  schema. The Postgres schema uses native `Json` columns, so the repos need a small adapter before Docker or Vercel
+  deploys will type-check and behave the same. The Docker and Vercel configs are untested here: Docker isn't
+  installed on the dev Mac. The YAML and JSON were checked with a parser, and the Postgres schema passes
+  `prisma validate`.
+- These are all in-memory and single-process: cache, rate limiter, job queue and usage burst control. They don't
+  survive a restart and aren't shared across instances. Redis or BullMQ are planned behind the same interfaces.
+- You can save a Massive/Polygon key in **Settings → AI keys** (stored encrypted), but the market-data chain
+  (`src/lib/data/massive.ts`) currently reads only the env vars. Live data is enabled per deployment, not per user.
+- Usage resets on **UTC** month and day boundaries, not the user's local time.
+- No real billing (plan toggle only), no email delivery (the magic link is simulated) and no real-time streaming
+  quotes. Quotes are cached for 30 seconds.
+- Mock data is illustrative. Mock financials, news, transcripts and filings are generated and labelled as such.
+- AI answers depend on the configured model. Without a key, the Mock provider returns canned synthesis.
+- Research only. Nothing in NidhikshDesk is investment advice.
