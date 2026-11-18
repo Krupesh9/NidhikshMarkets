@@ -15,6 +15,14 @@ export function pulseDbUrl(raw, { pooled = true } = {}) {
   return u.toString();
 }
 
+/**
+ * The app's database URL. Accepts the names Vercel's Storage integrations inject, so connecting a database in the
+ * Vercel dashboard needs no manual copying: DATABASE_URL (Neon / manual), POSTGRES_PRISMA_URL or POSTGRES_URL (Supabase).
+ */
+export function resolveDatabaseUrl() {
+  return process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
+}
+
 /** Direct (non-pooled) URL for schema changes: Supabase DIRECT_URL, Neon DATABASE_URL_UNPOOLED, or Vercel Postgres. */
 export function pulseDirectUrl() {
   const raw = process.env.DIRECT_URL || process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING;
