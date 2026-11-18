@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { getSessionUser, googleEnabled } from '@/lib/auth';
+import { demoLoginEnabled, getSessionUser, googleEnabled, ownerLoginEnabled } from '@/lib/auth';
 import { LoginForm } from './LoginForm';
 
 export const metadata: Metadata = { title: 'Sign in' };
@@ -17,5 +17,5 @@ export default async function LoginPage({ searchParams }: { searchParams: { call
       if (u.pathname.startsWith('/') && !u.pathname.startsWith('//') && u.pathname !== '/login') next = u.pathname + u.search;
     } catch { /* ignore */ }
   }
-  return <LoginForm googleEnabled={googleEnabled} next={next} initialError={searchParams.error ? 'Sign-in failed. Try again.' : undefined} />;
+  return <LoginForm googleEnabled={googleEnabled} ownerLogin={ownerLoginEnabled} demoLogin={demoLoginEnabled} next={next} initialError={searchParams.error ? 'Sign-in failed. Try again.' : undefined} />;
 }

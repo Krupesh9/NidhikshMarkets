@@ -2,6 +2,7 @@ import 'server-only';
 import type { NextAuthOptions } from 'next-auth';
 import { getServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import GoogleProvider from 'next-auth/providers/google';
 import { db } from './db';
 import { asPlan, type Plan, type Role } from './plans';
@@ -19,6 +20,29 @@ export interface SessionUser {
 
 export const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
+/** Owner sign-in (email + password from env) — the production login for a personal deployment. */
+export const ownerLoginEnabled = !!(process.env.PULSE_OWNER_EMAIL && process.env.PULSE_OWNER_PASSWORD);
+/**
+ * Demo "magic link" (email only, no password) — local development only. Off in production unless
+ * ALLOW_DEMO_LOGIN=1 is set explicitly, because anyone could sign in as any seeded user.
+ */
+export const demoLoginEnabled = process.env.ALLOW_DEMO_LOGIN === '1' || process.env.NODE_ENV !== 'production';
+
+function safeEqual(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest();
+  const hb = createHash('sha256').update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
+/** First owner sign-in creates the organisation and an admin user on the top plan. */
+async function upsertOwner(email: string) {
+  const existing = await db.user.findUnique({ where: { email } });
+  if (existing) return existing;
+  const org = (await db.organization.findFirst({ orderBy: { createdAt: 'asc' } }))
+    ?? (await db.organization.create({ data: { name: 'Nidhiksh', slug: 'nidhiksh' } }));
+  return db.user.create({ data: { email, name: process.env.PULSE_OWNER_NAME || email.split('@')[0], orgId: org.id, role: 'ADMIN', plan: 'PRO_PLUS' } });
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: 'jwt', maxAge: 30 * 24 * 3600 },
@@ -26,11 +50,21 @@ export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       id: 'credentials',
-      name: 'Email (dev magic link)',
-      credentials: { email: { label: 'Email', type: 'email' } },
+      name: 'Email',
+      credentials: { email: { label: 'Email', type: 'email' }, password: { label: 'Password', type: 'password' } },
       async authorize(creds) {
         const email = String(creds?.email ?? '').trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+        const owner = process.env.PULSE_OWNER_EMAIL?.trim().toLowerCase();
+        if (ownerLoginEnabled && email === owner) {
+          if (!safeEqual(String(creds?.password ?? ''), process.env.PULSE_OWNER_PASSWORD!)) {
+            log.info('auth.owner_password_rejected', { email });
+            return null;
+          }
+          const u = await upsertOwner(email);
+          return { id: u.id, email: u.email, name: u.name, image: u.image };
+        }
+        if (!demoLoginEnabled) return null;
         const user = await db.user.findUnique({ where: { email } });
         if (!user) return null;
         log.info('auth.magic_link_simulated', { email, link: `${process.env.NEXTAUTH_URL ?? 'http://localhost:4200'}/api/auth/callback/email?token=dev-simulated` });

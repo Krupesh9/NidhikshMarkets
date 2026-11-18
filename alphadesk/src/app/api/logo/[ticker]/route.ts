@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
 import { sanitizeTicker } from '@/lib/sanitize';
 import { log } from '@/lib/log';
+import { cacheDir } from '@/lib/cache-dir';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
  * → Google favicon for the company homepage → 404. Rate-limit/network failures are not remembered as misses.
  * Images are cached on disk under .cache/logos (misses are remembered for a day) so each logo is fetched once.
  */
-const DIR = path.join(process.cwd(), '.cache', 'logos');
+const DIR = cacheDir('logos');
 const MISS_TTL = 24 * 3600_000;
 type Img = { body: Buffer; type: string };
 const inflight = new Map<string, Promise<{ img: Img | null; transient: boolean }>>();

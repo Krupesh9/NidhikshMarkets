@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { EstimatePeriod, Estimates, PartialProvider, SourceRef, WithMeta } from './types';
 import { fiscalYearLabel } from './secFinancials';
 import { log } from '../log';
+import { cacheDir } from '../cache-dir';
 
 /**
  * Alpha Vantage adapter — analyst consensus (EARNINGS_ESTIMATES) and, on premium keys, OVERVIEW
@@ -17,7 +18,7 @@ import { log } from '../log';
 const NAME = 'Alpha Vantage';
 const DAY_MS = 24 * 3600_000;
 const TIMEOUT_MS = 10_000;
-const CACHE_FILE = path.join(process.cwd(), '.cache', 'alphavantage.json');
+const CACHE_FILE = cacheDir('alphavantage.json');
 
 export function alphaVantageEnabled(): boolean {
   return !!process.env.ALPHA_VANTAGE_API_KEY && process.env.ALPHADESK_FORCE_MOCK !== '1';

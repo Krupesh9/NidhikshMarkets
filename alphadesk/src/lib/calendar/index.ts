@@ -2,6 +2,7 @@ import 'server-only';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { cache } from '@/lib/cache';
+import { cacheDir } from '@/lib/cache-dir';
 import { log } from '@/lib/log';
 import { getMarketData } from '@/lib/data';
 import type { CalendarCategory, CalendarEvent, CalendarResult, CalendarSourceStatus } from './types';
@@ -17,7 +18,7 @@ const HOLIDAY_SET = new Set(MARKET_HOLIDAYS.map((h) => h.date));
 
 const FRED_TTL_MS = 12 * 60 * 60_000;
 const AV_TTL_MS = 24 * 60 * 60_000;
-const AV_DISK = path.join(process.cwd(), '.cache', 'av-earnings-calendar.json');
+const AV_DISK = cacheDir('av-earnings-calendar.json');
 const TIMEOUT_MS = 8_000;
 
 export interface CalendarQuery {

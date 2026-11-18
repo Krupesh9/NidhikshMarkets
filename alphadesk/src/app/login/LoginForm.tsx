@@ -15,9 +15,10 @@ const DEMO_USERS = [
   { email: 'intern@nidhikshdesk.dev', name: 'Jordan Lee', role: 'Viewer', plan: 'Free' },
 ];
 
-export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled: boolean; next: string; initialError?: string }) {
+export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true, next, initialError }: { googleEnabled: boolean; ownerLogin?: boolean; demoLogin?: boolean; next: string; initialError?: string }) {
   const router = useRouter();
   const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState(initialError);
   const [sent, setSent] = React.useState(false);
@@ -26,14 +27,14 @@ export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled
     setBusy(addr);
     setError(undefined);
     setSent(true);
-    const r = await signIn('credentials', { email: addr, redirect: false });
+    const r = await signIn('credentials', { email: addr, password: ownerLogin ? password : '', redirect: false });
     if (r?.ok && !r.error) {
       router.replace(next);
       router.refresh();
     } else {
       setBusy(null);
       setSent(false);
-      setError('No account found for that email. Use one of the demo users below.');
+      setError(ownerLogin ? 'Email or password is incorrect.' : 'No account found for that email. Use one of the demo users below.');
     }
   }
 
@@ -54,11 +55,17 @@ export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled
               <Label htmlFor="email">Work email</Label>
               <Input id="email" type="email" autoComplete="email" required placeholder="you@fund.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
+            {ownerLogin && (
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            </div>
+            )}
             <Button type="submit" className="w-full" disabled={!!busy}>
-              {busy === email && busy ? <Loader2 className="animate-spin" /> : <Mail />} Send magic link
+              {busy === email && busy ? <Loader2 className="animate-spin" /> : <Mail />} {ownerLogin ? 'Sign in' : 'Send magic link'}
             </Button>
-            <p className="text-[11px] text-muted">Dev mode: the magic link is simulated (logged to the server console) and you are signed in immediately.</p>
-            {sent && !error && <p className="text-xs text-info" role="status">Magic link sent — signing you in…</p>}
+            {!ownerLogin && <p className="text-[11px] text-muted">Dev mode: the magic link is simulated (logged to the server console) and you are signed in immediately.</p>}
+            {sent && !error && <p className="text-xs text-info" role="status">Signing you in…</p>}
             {error && <p className="text-xs text-down" role="alert">{error}</p>}
           </form>
           {googleEnabled && (
@@ -67,6 +74,7 @@ export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled
               <Button variant="secondary" className="w-full" onClick={() => signIn('google', { callbackUrl: next })}>Continue with Google</Button>
             </>
           )}
+          {demoLogin && (
           <div className="mt-5 border-t border-border pt-4">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">Quick demo sign-in</p>
             <ul className="space-y-1.5">
@@ -87,6 +95,7 @@ export function LoginForm({ googleEnabled, next, initialError }: { googleEnabled
               ))}
             </ul>
           </div>
+          )}
         </div>
         <p className="mt-6 text-center text-[11px] text-muted">Research only — not investment advice. No trading or order routing.</p>
       </div>

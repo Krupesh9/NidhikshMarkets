@@ -10,3 +10,6 @@ prisma/*.db-journal
 .DS_Store
 coverage
 .cache/
+
+# generated at Vercel build time
+prisma/postgres.generated.prisma
