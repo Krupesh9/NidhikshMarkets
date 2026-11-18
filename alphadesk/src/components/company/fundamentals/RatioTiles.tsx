@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { PEG_BAND_TEXT } from '@/lib/fundamentals/formulas';
+import { pegBandText, type PegThresholds } from '@/lib/fundamentals/formulas';
 import type { DeModel, PbModel, PegModel, RatioPoint } from '@/lib/fundamentals/types';
 import { MetricButton, useOpenSource } from '@/components/company/MetricButton';
 import { cn } from '@/lib/utils';
@@ -42,20 +42,27 @@ function RatioHistory({ points, name }: { points: RatioPoint[]; name: string }) 
   );
 }
 
-function PegScale({ value }: { value: number }) {
-  const max = 3;
+function PegScale({ value, t }: { value: number; t: PegThresholds }) {
+  const max = Math.max(3, Math.ceil(t.richAbove * 1.5));
   const left = (Math.min(value, max) / max) * 100;
+  const a = (t.fairFrom / max) * 100;
+  const b = ((t.richAbove - t.fairFrom) / max) * 100;
   return (
     <div className="mt-3 space-y-1">
-      <div className="relative flex h-2 gap-[2px] overflow-hidden rounded-full" role="img" aria-label={`PEG ${value.toFixed(2)} on a 0 to 3 scale`}>
-        <div className="h-full bg-info/30" style={{ width: '33.333%' }} />
-        <div className="h-full bg-muted/30" style={{ width: '33.333%' }} />
-        <div className="h-full bg-accent/30" style={{ width: '33.333%' }} />
+      <div className="relative flex h-2 gap-[2px] overflow-hidden rounded-full" role="img" aria-label={`PEG ${value.toFixed(2)} on a 0 to ${max} scale`}>
+        <div className="h-full bg-info/30" style={{ width: `${a}%` }} />
+        <div className="h-full bg-muted/30" style={{ width: `${b}%` }} />
+        <div className="h-full bg-accent/30" style={{ flex: 1 }} />
       </div>
       <div className="relative h-0">
         <div className="absolute -top-[13px] h-3.5 w-3.5 -translate-x-1/2 rounded-full border-2 border-panel bg-text shadow" style={{ left: `${left}%` }} aria-hidden />
       </div>
-      <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted"><span>0</span><span>1</span><span>2</span><span>3+</span></div>
+      <div className="relative h-3 font-mono text-[10px] tabular-nums text-muted">
+        <span className="absolute left-0">0</span>
+        <span className="absolute -translate-x-1/2" style={{ left: `${a}%` }}>{t.fairFrom}</span>
+        <span className="absolute -translate-x-1/2" style={{ left: `${a + b}%` }}>{t.richAbove}</span>
+        <span className="absolute right-0">{max}+</span>
+      </div>
     </div>
   );
 }
@@ -69,8 +76,8 @@ export function PegTile({ model }: { model: PegModel }) {
           <div className="mt-1 font-mono text-[11px] tabular-nums text-muted">
             P/E {fmtX(model.pe, 1)} ÷ growth {model.growth?.toFixed(1)}%
           </div>
-          <PegScale value={model.value} />
-          <p className="mt-3 text-xs leading-relaxed">{model.band ? PEG_BAND_TEXT[model.band] : ''}</p>
+          <PegScale value={model.value} t={model.thresholds} />
+          <p className="mt-3 text-xs leading-relaxed">{model.band ? pegBandText(model.band, model.thresholds) : ''}</p>
           <p className="mt-auto pt-3 text-[11px] text-muted">Growth: {model.growthBasis === 'consensus' ? 'forward consensus' : 'historical'} — {model.growthLabel}.</p>
         </>
       ) : (

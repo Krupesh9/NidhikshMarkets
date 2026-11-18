@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FinancialStatementRow, InsiderTxn } from '@/lib/data/types';
 import {
-  addTickers, defaultList, isValidTicker, MAX_LIST, removeTicker, sameGroups, sameList, sanitizeGroups, sanitizeTickers, SP500_TOP25, splitTickerInput,
+  addTickers, defaultList, isValidTicker, MAX_LIST, removeTicker, sameGroups, sameList, sanitizeGroups, sanitizeTickers, SP100, SP500_TOP25, splitTickerInput,
 } from '../list';
 import { fromSavedScreen, LIST_KEY, matchesRow, runScreen, sortRows, toSavedScreen } from '../engine';
 import { buildWhyNow, FUND_SECTOR, mapFmpSector, netInsiderDollars, revenueGrowthFrom, UNKNOWN_SECTOR } from '../derive';
@@ -43,13 +43,15 @@ describe('ticker list editing', () => {
     expect(sameGroups({ A: 'x' }, { A: 'x' })).toBe(true);
     expect(sameGroups({ A: 'x' }, { A: 'y' })).toBe(false);
   });
-  it('default list = watchlist when it has ≥ 10 names, else watchlist + S&P leaders', () => {
+  it('default list = watchlist when it has ≥ 10 names, else watchlist + the S&P 100', () => {
     const wl = ['AAPL', 'AMZN', 'AVGO', 'META', 'MSFT', 'GOOGL', 'NVDA', 'MU', 'TSLA', 'JPM', 'VOO'];
     expect(defaultList(wl)).toEqual(wl);
     const short = defaultList(['PLTR', 'NVDA']);
     expect(short.slice(0, 2)).toEqual(['PLTR', 'NVDA']);
     expect(short.filter((t) => t === 'NVDA')).toHaveLength(1);
-    expect(short).toHaveLength(2 + SP500_TOP25.length - 1);
+    // PLTR and NVDA are both S&P 100 members, so nothing is added twice
+    expect(short).toHaveLength(SP100.length);
+    expect(defaultList([])).toEqual([...SP100]);
     expect(sameList(short, [...short])).toBe(true);
   });
 });

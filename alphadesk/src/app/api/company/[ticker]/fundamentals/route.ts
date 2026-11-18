@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { badRequest, requireFeature, withApi } from '@/lib/http';
 import { sanitizeTicker } from '@/lib/sanitize';
 import { loadFundamentals } from '@/lib/fundamentals/load';
+import { getValuationDefaults } from '@/lib/fundamentals/settings.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,9 @@ export const GET = withApi(
     requireFeature(user, 'financials');
     const ticker = sanitizeTicker(params.ticker);
     if (!ticker) throw badRequest('Invalid ticker');
-    return loadFundamentals(ticker, { growth: query.growth, discount: query.discount, terminal: query.terminal });
+    // The org owner's valuation defaults (Settings → Valuation defaults) set the model defaults for everyone.
+    const defaults = await getValuationDefaults(user.orgId);
+    return loadFundamentals(ticker, { growth: query.growth, discount: query.discount, terminal: query.terminal }, defaults);
   },
   {
     query: z.object({ growth: pctParam(-50, 100), discount: pctParam(0, 50), terminal: pctParam(-5, 10) }),

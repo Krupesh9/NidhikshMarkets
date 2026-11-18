@@ -29,6 +29,7 @@ model User {
   plan          String    @default("FREE")    // FREE | PRO | PRO_PLUS
   image         String?
   emailVerified DateTime?
+  passwordHash  String?   // email+password sign-up (nullable; OAuth / magic-link users have none)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
@@ -343,4 +344,39 @@ model DocumentChunk {
   @@index([ticker])
   @@index([sourceId])
   @@index([date])
+}
+
+// Org-wide settings edited by the owner (Settings). value = JSON. Key e.g. "valuation.defaults".
+model AppSetting {
+  id          String   @id @default(cuid())
+  orgId       String
+  key         String
+  value       String   @default("{}") // JSON
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orgId, key])
+  @@index([orgId])
+}
+
+// A user's saved valuation assumptions per ticker (Fundamental values section). ticker "*" = the user's global
+// defaults (only requiredMos is used there).
+model ValuationPreset {
+  id          String   @id @default(cuid())
+  orgId       String
+  userId      String
+  ticker      String
+  growth      Float?
+  discount    Float?
+  terminal    Float?
+  requiredMos Float?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, ticker])
+  @@index([orgId])
+  @@index([userId])
+  @@index([ticker])
 }

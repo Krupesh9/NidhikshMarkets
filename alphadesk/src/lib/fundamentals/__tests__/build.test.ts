@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Bar, Estimates, FinancialStatementRow, SourceRef } from '@/lib/data/types';
 import { adjustForSplits, buildFundamentals, closeOnOrBefore, estimateGrowth, ttmFreeCashFlow, type BuildInput } from '../build';
+import { factoryDefaults, type ValuationDefaults } from '../defaults';
+
+/** The pre-2026-11 model-derived defaults (consensus growth, CAPM discount, 2.5% terminal) — still selectable in Settings. */
+function modelDefaults(): ValuationDefaults {
+  const d = factoryDefaults();
+  d.dcf.growthMode = 'model';
+  d.dcf.discountMode = 'capm';
+  d.dcf.terminal = 2.5;
+  return d;
+}
 
 const src: SourceRef = { id: 's', name: 'src', kind: 'filing' };
 const rowSource = (r: FinancialStatementRow): SourceRef => ({ id: `row:${r.fiscalYear}-${r.fiscalPeriod}`, name: `10-K FY${r.fiscalYear}`, kind: 'filing', url: 'https://www.sec.gov/x' });
@@ -104,7 +114,7 @@ describe('adjustForSplits', () => {
 
 describe('buildFundamentals', () => {
   it('computes every block for a normal company (hand-checked)', () => {
-    const m = buildFundamentals(input());
+    const m = buildFundamentals(input({ defaults: modelDefaults() }));
     expect(m.kind).toBe('company');
     // TTM EPS 2.00, g 10, Y 5.5 → 2 × 28.5 × 0.8 = 45.6
     expect(m.graham.value).toBeCloseTo(45.6, 6);
@@ -185,7 +195,7 @@ describe('buildFundamentals', () => {
 
   it('missing data: no statements → unavailable; no FRED → fallbacks + notes', () => {
     expect(buildFundamentals(input({ annual: [], quarterly: [] })).kind).toBe('unavailable');
-    const m = buildFundamentals(input({ riskFree: null, aaa: null, beta: null }));
+    const m = buildFundamentals(input({ riskFree: null, aaa: null, beta: null, defaults: modelDefaults() }));
     expect(m.graham.status).toBe('nm');
     expect(m.graham.reason).toMatch(/Aaa/);
     expect(m.dcf.defaults.discount).toBeCloseTo(4.5 + 5, 6); // fallback rf 4.5 + β 1.0 × 5

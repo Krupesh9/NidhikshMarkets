@@ -9,6 +9,7 @@ import { log } from '@/lib/log';
 import { buildFundamentals, type YieldPoint } from './build';
 import { isFinancialCompany, isNum, regressionBeta, type DcfParams } from './formulas';
 import type { FundamentalsModel } from './types';
+import type { ValuationDefaults } from './defaults';
 
 const md = () => getMarketData();
 
@@ -40,9 +41,9 @@ function historyBeta(asset: Bar[], market: Bar[]): number | null {
 
 /**
  * Loads price (Alpaca chain), SEC statements, consensus (Alpha Vantage), FRED yields, FMP profile/beta and 5Y history,
- * then builds the Fundamental values model. Never throws for missing data — the model carries not-applicable states.
+ * then builds the Fundamental values model with the org's valuation `defaults` (factory values when omitted). Never throws for missing data — the model carries not-applicable states.
  */
-export async function loadFundamentals(ticker: string, overrides?: Partial<DcfParams>): Promise<FundamentalsModel> {
+export async function loadFundamentals(ticker: string, overrides?: Partial<DcfParams>, defaults?: ValuationDefaults): Promise<FundamentalsModel> {
   const T = ticker.toUpperCase();
   const [p, q, fa, fq, e, f, h, fmp, rf, daaa] = await Promise.all([
     md().getProfile(T), md().getQuote(T), md().getFinancials(T, 'annual'), md().getFinancials(T, 'quarterly'), md().getEstimates(T),
@@ -103,6 +104,6 @@ export async function loadFundamentals(ticker: string, overrides?: Partial<DcfPa
     ticker: T, name: fmp?.companyName || profile?.name || null, price, priceSource, annual, quarterly, rowSource,
     estimates, estimatesSource: estSrc, riskFree: rf, aaa, beta, bars, isFund, isFinancial,
     unavailableReason: mixing ? `Only simulated statements are available for ${T}; fundamental values are hidden rather than mixing demo data with live prices.` : undefined,
-    overrides, isMock: metas.some((m) => m.isMock && m.provider !== 'none'), providers, extraSources: extra,
+    overrides, defaults, isMock: metas.some((m) => m.isMock && m.provider !== 'none'), providers, extraSources: extra,
   });
 }

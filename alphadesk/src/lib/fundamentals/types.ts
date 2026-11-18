@@ -1,6 +1,7 @@
 // Client-safe model types for the "Fundamental values" section (types only).
 import type { SourceRef } from '@/lib/data/types';
-import type { DcfInputs, DcfParams, DcfResult, PegBand } from './formulas';
+import type { DcfInputs, DcfParams, DcfResult, GrahamConstants, PegBand, PegThresholds } from './formulas';
+import type { ValuationDefaults } from './defaults';
 
 export type FundamentalsKind = 'company' | 'financial' | 'fund' | 'unavailable';
 export type GrowthBasis = 'consensus' | 'historical-eps' | 'historical-fcf' | 'none';
@@ -38,6 +39,10 @@ export interface GrahamModel {
   /** AAA yield (percent) */
   y: number | null;
   value: number | null;
+  /** formula constants actually used (owner defaults; Graham's 8.5 / 2 / 4.4 by default) */
+  constants: GrahamConstants;
+  /** 'model' = g from the growth estimate; 'fixed' = owner default */
+  growthMode: 'model' | 'fixed';
   grahamNumber: number | null;
   bvps: number | null;
   marginOfSafety: number | null;
@@ -57,6 +62,11 @@ export interface DcfModel {
   result: DcfResult | null;
   beta: { value: number; basis: string; source: SourceRef };
   erp: number;
+  /** how the default growth / discount were set, e.g. "Owner default (fixed 10%)" */
+  growthBasis: string;
+  discountBasis: string;
+  growthMode: 'model' | 'fixed';
+  discountMode: 'capm' | 'fixed';
   source: SourceRef;
   balanceSource: SourceRef;
 }
@@ -71,6 +81,7 @@ export interface PegModel {
   growthBasis: GrowthBasis;
   growthLabel: string;
   band: PegBand | null;
+  thresholds: PegThresholds;
   source: SourceRef;
 }
 
@@ -128,6 +139,8 @@ export interface FundamentalsModel {
   peg: PegModel;
   pb: PbModel;
   de: DeModel;
+  /** the valuation defaults applied (owner's Settings → Valuation defaults, else factory) */
+  valuation: ValuationDefaults;
   /** methodology / source list for the footer */
   sources: SourceRef[];
   notes: string[];
