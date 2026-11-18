@@ -23,3 +23,18 @@ export async function fredLatest(series: string): Promise<Yield | null> {
     }
   }, 60 * 60_000);
 }
+
+/** Recent observations (oldest → newest) for a FRED daily series, e.g. for sparklines. Cached 1h. */
+export async function fredHistory(series: string, points = 30): Promise<{ date: string; value: number }[]> {
+  const key = process.env.FRED_API_KEY;
+  if (!key) return [];
+  return cache.wrap(`fred:hist:${series}:${points}`, async () => {
+    try {
+      const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(series)}&api_key=${key}&file_type=json&sort_order=desc&limit=${points + 10}`;
+      const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return [];
+      const j = (await r.json()) as { observations?: { date: string; value: string }[] };
+      return (j.observations ?? []).map((o) => ({ date: o.date, value: Number(o.value) })).filter((o) => Number.isFinite(o.value)).slice(0, points).reverse();
+    } catch { return []; }
+  }, 60 * 60_000);
+}

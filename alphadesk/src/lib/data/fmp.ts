@@ -100,3 +100,11 @@ export async function getIndexQuote(symbol: string): Promise<IndexQuote | null> 
   if (!q || !Number.isFinite(q.price)) return null;
   return { symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePercentage, ts: q.timestamp ? new Date(q.timestamp * 1000).toISOString() : new Date().toISOString() };
 }
+
+/** Daily closes (oldest → newest) for an index such as ^GSPC from FMP's EOD endpoint. Cached 10 min. */
+export async function getIndexHistory(symbol: string, days = 45): Promise<{ date: string; close: number }[]> {
+  if (!fmpEnabled()) return [];
+  const from = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const rows = await get<{ date: string; price: number }[]>(`historical-price-eod/light?symbol=${encodeURIComponent(symbol)}&from=${from}`);
+  return (rows ?? []).map((r) => ({ date: r.date, close: r.price })).filter((r) => Number.isFinite(r.close)).reverse();
+}

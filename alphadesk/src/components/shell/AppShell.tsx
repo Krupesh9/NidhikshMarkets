@@ -12,6 +12,7 @@ import { RightRail, RightRailProvider } from './RightRail';
 import { CommandMenu } from './CommandMenu';
 import { ShortcutOverlay } from './ShortcutOverlay';
 import { MobileTabBar } from './MobileTabBar';
+import { MarketTicker } from './MarketTicker';
 import { UserProvider, type ClientUsage, type ClientUser, type DataMode } from './UserContext';
 
 interface ShellUI { openChat: () => void; openSearch: () => void; chatOpen: boolean }
@@ -63,6 +64,7 @@ export function AppShell({ user, usage, dataMode, children }: {
               <Sidebar collapsed={collapsed || pathname.startsWith('/watchlist')} locked={pathname.startsWith('/watchlist')} onToggle={toggleSidebar} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <Topbar onSearch={() => setSearchOpen(true)} onChat={() => setChatOpen(true)} onShortcuts={() => setHelpOpen(true)} />
+                <MarketTicker />
                 <main id="main" className="min-w-0 flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-12 md:pt-8">
                   <div key={pathname.split('/').slice(0, 2).join('/')} className="page-enter mx-auto w-full max-w-[1440px]">{children}</div>
                 </main>

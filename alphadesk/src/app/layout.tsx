@@ -7,7 +7,8 @@ import './globals.css';
 export const metadata: Metadata = {
   title: { default: 'Nidhiksh Pulse', template: '%s · Nidhiksh Pulse' },
   description: 'Research and decision platform for PMs and equity analysts. Research only — not investment advice.',
-  icons: { icon: '/nidhiksh-logo.png', apple: '/nidhiksh-logo.png' },
+  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'Pulse', statusBarStyle: 'black-translucent' },
   applicationName: 'Nidhiksh Pulse',
 };
 

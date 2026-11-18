@@ -50,8 +50,7 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
           )}
           {quote && (
             <div className="mt-0.5 flex items-center gap-2 text-sm">
-              <Delta value={quote.change} suffix="" dp={2} />
-              <Delta value={quote.changePct} badge />
+                            <Delta value={quote.changePct} amount={quote.change} badge className="text-sm" />
               <span className="text-xs text-muted">as of {fmt.date(quote.ts)}</span>
             </div>
           )}
@@ -63,14 +62,14 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
           <KeyStat label="P/E (TTM)">
             <MetricButton source={sources.pe} highlight={valuation.pe ? `${valuation.pe.toFixed(1)}x` : undefined} label="P/E">{fmt.multiple(valuation.pe)}</MetricButton>
           </KeyStat>
+          <KeyStat label="Fwd P/E">
+            <MetricButton source={sources.fwdPe} highlight={forward.pe ? `${forward.pe.toFixed(1)}x` : undefined} label="Forward P/E">{fmt.multiple(forward.pe)}</MetricButton>
+          </KeyStat>
           <KeyStat label="EPS (TTM)">
             <MetricButton source={{ ...sources.pe, id: `${sources.pe.id}:eps`, excerpt: valuation.epsBasis, locator: 'Diluted EPS, trailing 12 months' }} highlight={valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : undefined} label="EPS (TTM)">{valuation.epsTtm != null ? `$${valuation.epsTtm.toFixed(2)}` : '—'}</MetricButton>
           </KeyStat>
           <KeyStat label="Fwd EPS">
             <MetricButton source={sources.fwdEps} highlight={forward.eps != null ? `$${forward.eps.toFixed(2)}` : undefined} label="Forward EPS">{forward.eps != null ? `$${forward.eps.toFixed(2)}` : '—'}</MetricButton>
-          </KeyStat>
-          <KeyStat label="Fwd P/E">
-            <MetricButton source={sources.fwdPe} highlight={forward.pe ? `${forward.pe.toFixed(1)}x` : undefined} label="Forward P/E">{fmt.multiple(forward.pe)}</MetricButton>
           </KeyStat>
           <KeyStat label="EV/EBITDA">
             <MetricButton source={sources.evEbitda} highlight={valuation.evEbitda ? `${valuation.evEbitda.toFixed(1)}x` : undefined} label="EV/EBITDA">{fmt.multiple(valuation.evEbitda)}</MetricButton>

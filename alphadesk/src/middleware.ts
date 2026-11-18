@@ -11,5 +11,5 @@ export default withAuth({
 });
 
 export const config = {
-  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|icon.png|nidhiksh-logo.png|.*\\.(?:png|svg|jpg|ico|woff2?)$).*)'],
+  matcher: ['/((?!api/|_next/static|_next/image|favicon.ico|icon.png|nidhiksh-logo.png|manifest.webmanifest|icons/|.*\\.(?:png|svg|jpg|ico|woff2?)$).*)'],
 };

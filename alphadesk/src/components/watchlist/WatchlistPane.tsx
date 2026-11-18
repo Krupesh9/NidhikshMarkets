@@ -56,7 +56,7 @@ export function WatchlistPane({ symbols: initial }: { symbols: string[] }) {
   };
 
   return (
-    <aside aria-label="Watchlist" className="w-full shrink-0 rounded-xl border border-border bg-panel shadow-sm shadow-black/10 lg:sticky lg:top-24 lg:w-80">
+    <aside aria-label="Watchlist" className="w-full shrink-0 rounded-xl border border-border bg-panel shadow-sm shadow-black/10 lg:sticky lg:top-[7.5rem] lg:w-80">
       <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
         <h1 className="flex items-center gap-1.5 text-sm font-semibold"><Star className="h-4 w-4 text-accent" aria-hidden /> Watchlist</h1>
         <span className="text-[11px] text-muted">{symbols.length} names</span>
@@ -89,7 +89,7 @@ export function WatchlistPane({ symbols: initial }: { symbols: string[] }) {
                   ) : q ? (
                     <span className="ml-auto flex items-center gap-2">
                       <span className="font-mono tabular-nums">{fmt.price(q.price)}</span>
-                      <Delta value={q.changePct} badge className="min-w-[4.25rem] text-xs" />
+                      <Delta value={q.changePct} amount={q.change} badge className="text-xs" />
                     </span>
                   ) : (
                     <span className="ml-auto text-xs text-muted">—</span>
