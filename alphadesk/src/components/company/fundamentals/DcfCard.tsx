@@ -46,16 +46,32 @@ export function AssumptionSlider({ id, label, help, value, min, max, step = 0.1,
   );
 }
 
-export function DcfCard({ ticker, model, params, setParams, result, price, riskFree }: {
+type Range = readonly [number, number];
+/** Slider range from the owner's settings, widened to include the default and any saved value. */
+export function sliderRange(r: Range, ...include: number[]): [number, number] {
+  const vals = include.filter((v) => Number.isFinite(v));
+  return [Math.min(r[0], ...vals.map(Math.floor)), Math.max(r[1], ...vals.map(Math.ceil))];
+}
+
+export function DcfCard({ ticker, model, params, setParams, result, price, riskFree, ranges: cfgRanges, baseline, hasSaved = false, actions, chip }: {
   ticker: string; model: DcfModel; params: DcfParams; setParams: (p: DcfParams) => void; result: DcfResult | null; price: number | null; riskFree: RateInput;
+  /** owner's slider ranges (Settings → Valuation defaults) */
+  ranges: { growth: Range; discount: Range; terminal: Range };
+  /** what "Reset" returns to: the user's saved assumptions, else the defaults */
+  baseline: DcfParams;
+  hasSaved?: boolean;
+  actions?: React.ReactNode;
+  chip?: React.ReactNode;
 }) {
   const d = model.defaults;
   const ranges = {
-    growth: [Math.min(0, Math.floor(d.growth)), 25] as const,
-    discount: [Math.min(6, Math.floor(d.discount)), Math.max(14, Math.ceil(d.discount))] as const,
-    terminal: [0, 4] as const,
+    growth: sliderRange(cfgRanges.growth, d.growth, baseline.growth),
+    discount: sliderRange(cfgRanges.discount, d.discount, baseline.discount),
+    terminal: sliderRange(cfgRanges.terminal, d.terminal, baseline.terminal),
   };
   const edited = params.growth !== d.growth || params.discount !== d.discount || params.terminal !== d.terminal;
+  const offBaseline = params.growth !== baseline.growth || params.discount !== baseline.discount || params.terminal !== baseline.terminal;
+  const resetLabel = hasSaved ? 'Revert to saved' : 'Reset to defaults';
   const inputs = model.inputs;
   const ok = result?.ok ? result : null;
 
@@ -63,7 +79,7 @@ export function DcfCard({ ticker, model, params, setParams, result, price, riskF
     ...model.source,
     id: `${model.source.id}:${params.growth}:${params.discount}:${params.terminal}`,
     excerpt: ok && inputs
-      ? `Value/share = (Σ PV(FCF₁…₃) ${fmtBig(ok.sumPvFcf)} + PV(terminal) ${fmtBig(ok.pvTerminal)} + cash ${fmtBig(inputs.cash)} − debt ${fmtBig(inputs.totalDebt)}) ÷ ${fmtShares(inputs.shares)} diluted shares = ${fmtUsd(ok.perShare)}. Assumptions: growth ${params.growth.toFixed(1)}%/yr for 3 years, discount rate ${params.discount.toFixed(1)}%, terminal growth ${params.terminal.toFixed(1)}%${edited ? ' (edited by you; model defaults ' + `${d.growth}% / ${d.discount}% / ${d.terminal}%)` : ' (model defaults)'}. Base FCF: ${model.baseFcfBasis}. Default discount rate = rf ${riskFree.value?.toFixed(2) ?? '—'}% + β ${model.beta.value.toFixed(2)} × ERP ${model.erp.toFixed(1)}%.`
+      ? `Value/share = (Σ PV(FCF₁…₃) ${fmtBig(ok.sumPvFcf)} + PV(terminal) ${fmtBig(ok.pvTerminal)} + cash ${fmtBig(inputs.cash)} − debt ${fmtBig(inputs.totalDebt)}) ÷ ${fmtShares(inputs.shares)} diluted shares = ${fmtUsd(ok.perShare)}. Assumptions: growth ${params.growth.toFixed(1)}%/yr for 3 years, discount rate ${params.discount.toFixed(1)}%, terminal growth ${params.terminal.toFixed(1)}%${edited ? ' (edited; defaults ' + `${d.growth}% / ${d.discount}% / ${d.terminal}%)` : ' (defaults)'}. Base FCF: ${model.baseFcfBasis}. ${model.growthBasis}. ${model.discountBasis}.`
       : model.source.excerpt,
   };
 
@@ -76,10 +92,14 @@ export function DcfCard({ ticker, model, params, setParams, result, price, riskF
           <h3 className="eyebrow">Discounted cash flow · 3-year projection</h3>
           <p className="mt-1 text-xs text-muted">Free cash flow grown for 3 years, a terminal value at year 3, all discounted to today.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setParams(d)} disabled={!edited} aria-label="Reset DCF assumptions to defaults">
-          <RotateCcw aria-hidden /> Reset to defaults
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setParams(baseline)} disabled={!offBaseline} aria-label={hasSaved ? 'Revert DCF assumptions to your saved values' : 'Reset DCF assumptions to defaults'}>
+            <RotateCcw aria-hidden /> {resetLabel}
+          </Button>
+          {actions}
+        </div>
       </div>
+      {chip && <div className="mt-3">{chip}</div>}
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         {/* assumptions */}
@@ -97,7 +117,7 @@ export function DcfCard({ ticker, model, params, setParams, result, price, riskF
             <dt className="text-muted">Equity risk premium</dt>
             <dd className="text-right font-mono tabular-nums">{fmtPct(model.erp, 1)}</dd>
           </dl>
-          <p className="text-[11px] leading-relaxed text-muted">Default discount rate = CAPM cost of equity (rf + β × ERP). {model.beta.basis}.</p>
+          <p className="text-[11px] leading-relaxed text-muted">{model.growthBasis}. {model.discountBasis}.{model.discountMode === 'capm' ? ` ${model.beta.basis}.` : ''}</p>
         </div>
 
         {/* results */}
@@ -192,7 +212,7 @@ export function DcfCard({ ticker, model, params, setParams, result, price, riskF
             <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-center">
               <p className="text-sm font-medium">DCF not meaningful with these inputs</p>
               <p className="max-w-md text-xs text-muted">{result && !result.ok ? result.reason : model.reason}</p>
-              {edited && <Button variant="outline" size="sm" onClick={() => setParams(d)}><RotateCcw aria-hidden /> Reset to defaults</Button>}
+              {offBaseline && <Button variant="outline" size="sm" onClick={() => setParams(baseline)}><RotateCcw aria-hidden /> {resetLabel}</Button>}
             </div>
           )}
         </div>

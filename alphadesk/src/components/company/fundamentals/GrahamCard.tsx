@@ -31,17 +31,17 @@ function SafetyGauge({ mos, required }: { mos: number | null; required: number }
   );
 }
 
-const MOS_KEY = 'nd-required-mos';
-const MOS_DEFAULT = 25;
-
-export function GrahamCard({ model, growth, aaa, price }: { model: GrahamModel; growth: GrowthEstimate; aaa: RateInput; price: number | null }) {
+/**
+ * Graham card. The required margin of safety is owned by FundamentalsPanel: the user's saved assumptions for this
+ * ticker, else their saved global margin (server + localStorage), else the owner's default (`defaultRequired`).
+ */
+export function GrahamCard({ model, growth, aaa, price, required, setRequired, defaultRequired }: {
+  model: GrahamModel; growth: GrowthEstimate; aaa: RateInput; price: number | null;
+  required: number; setRequired: (v: number) => void; defaultRequired: number;
+}) {
   const epsSrc = { ...model.source, id: `${model.source.id}:eps`, excerpt: model.epsBasis };
-  // Required margin of safety: user-editable, remembered on this device (applies to every stock).
-  const [required, setRequiredState] = React.useState(MOS_DEFAULT);
-  React.useEffect(() => {
-    try { const v = Number(localStorage.getItem(MOS_KEY)); if (Number.isFinite(v) && v >= 0 && v <= 90 && localStorage.getItem(MOS_KEY) !== null) setRequiredState(v); } catch { /* storage unavailable */ }
-  }, []);
-  const setRequired = (v: number) => { setRequiredState(v); try { localStorage.setItem(MOS_KEY, String(v)); } catch { /* ignore */ } };
+  const c = model.constants;
+  const MOS_DEFAULT = defaultRequired;
   const buyBelow = model.value != null && model.value > 0 ? model.value * (1 - required / 100) : null;
   const meets = buyBelow != null && price != null ? price <= buyBelow : null;
   const gapPct = buyBelow != null && price != null ? ((buyBelow - price) / price) * 100 : null;
@@ -51,13 +51,13 @@ export function GrahamCard({ model, growth, aaa, price }: { model: GrahamModel; 
       <p className="mt-1 text-xs text-muted">Benjamin Graham’s revised (1974) growth formula, scaled by today’s Aaa bond yield.</p>
 
       <div className="mt-4 rounded-lg border border-border bg-panel p-3 font-mono text-[13px] tabular-nums">
-        <div className="text-muted">V = EPS × (8.5 + 2g) × 4.4 ÷ Y</div>
+        <div className="text-muted">V = EPS × ({c.basePe} + {c.growthMultiplier}g) × {c.baseYield} ÷ Y</div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <span className="text-muted">=</span>
           <MetricButton source={epsSrc} label="TTM EPS">{fmtUsd(model.eps)}</MetricButton>
-          <span className="text-muted">× (8.5 + 2 ×</span>
+          <span className="text-muted">× ({c.basePe} + {c.growthMultiplier} ×</span>
           <MetricButton source={growth.source} label="Growth g">{model.g != null ? model.g.toFixed(1) : '—'}</MetricButton>
-          <span className="text-muted">) × 4.4 ÷</span>
+          <span className="text-muted">) × {c.baseYield} ÷</span>
           <MetricButton source={aaa.source} label="Aaa yield Y">{model.y != null ? model.y.toFixed(2) : '—'}</MetricButton>
         </div>
       </div>
@@ -66,7 +66,7 @@ export function GrahamCard({ model, growth, aaa, price }: { model: GrahamModel; 
         <div><dt className="text-muted">g, %/yr{growth.capped ? ' (capped)' : ''}</dt><dd className="font-mono tabular-nums">{fmtPct(model.g)}</dd></div>
         <div><dt className="text-muted">Y, Aaa yield</dt><dd className="font-mono tabular-nums">{fmtPct(model.y, 2)}</dd></div>
       </dl>
-      <p className="mt-1 text-[11px] text-muted">g: {growth.label}{growth.value != null && growth.value < 0 ? ' (floored at 0%)' : ''}.</p>
+      <p className="mt-1 text-[11px] text-muted">g: {model.growthMode === 'fixed' ? `${model.g}% — owner default (Settings → Valuation defaults)` : `${growth.label}${growth.value != null && growth.value < 0 ? ' (floored at 0%)' : ''}`}.{aaa.series === 'override' ? ` Y: owner default ${aaa.value}%.` : ''}</p>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-lg border border-border bg-panel p-3">

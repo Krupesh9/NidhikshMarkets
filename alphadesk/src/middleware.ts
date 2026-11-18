@@ -1,7 +1,7 @@
 import { withAuth } from 'next-auth/middleware';
 
 /** Public page paths (everything else under the app requires a session). API routes enforce auth via withApi. */
-const PUBLIC = [/^\/login(\/|$)/, /^\/shared\/[^/]+\/?$/];
+const PUBLIC = [/^\/login(\/|$)/, /^\/signup(\/|$)/, /^\/shared\/[^/]+\/?$/];
 
 export default withAuth({
   pages: { signIn: '/login' },

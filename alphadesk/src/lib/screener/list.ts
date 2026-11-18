@@ -3,7 +3,7 @@
  *   addTickers(list, 'pltr, AMD  nvda', { group: 'Tech' })  → validated, upper-cased, de-duplicated, capped at 100
  */
 
-export const MAX_LIST = 100;
+export const MAX_LIST = 120;
 export const MAX_GROUP_LEN = 30;
 export const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
@@ -79,11 +79,17 @@ export function sanitizeGroups(input: unknown, tickers?: string[]): Record<strin
   return out;
 }
 
-/** Default list: the watchlist alone when it has ≥ 10 names, else watchlist + S&P 500 leaders (deduped, capped). */
-export function defaultList(watchlist: string[], spLeaders: readonly string[] = SP500_TOP25): string[] {
+/**
+ * S&P 100 constituents (OEX). Static list — S&P rebalances it rarely; review it when the index changes.
+ * GOOG and GOOGL are both members (two share classes).
+ */
+export const SP100 = ['AAPL', 'ABBV', 'ABT', 'ACN', 'ADBE', 'AIG', 'AMD', 'AMGN', 'AMT', 'AMZN', 'AVGO', 'AXP', 'BA', 'BAC', 'BK', 'BKNG', 'BLK', 'BMY', 'BRK.B', 'C', 'CAT', 'CHTR', 'CL', 'CMCSA', 'COF', 'COP', 'COST', 'CRM', 'CSCO', 'CVS', 'CVX', 'DE', 'DHR', 'DIS', 'DUK', 'EMR', 'F', 'FDX', 'GD', 'GE', 'GILD', 'GM', 'GOOG', 'GOOGL', 'GS', 'HD', 'HON', 'IBM', 'INTC', 'INTU', 'ISRG', 'JNJ', 'JPM', 'KO', 'LIN', 'LLY', 'LMT', 'LOW', 'MA', 'MCD', 'MDLZ', 'MDT', 'MET', 'META', 'MMM', 'MO', 'MRK', 'MS', 'MSFT', 'NEE', 'NFLX', 'NKE', 'NOW', 'NVDA', 'ORCL', 'PEP', 'PFE', 'PG', 'PLTR', 'PM', 'PYPL', 'QCOM', 'RTX', 'SBUX', 'SCHW', 'SO', 'SPG', 'T', 'TGT', 'TMO', 'TMUS', 'TSLA', 'TXN', 'UBER', 'UNH', 'UNP', 'UPS', 'USB', 'V', 'VZ', 'WFC', 'WMT', 'XOM'] as const;
+
+/** Default list: the watchlist alone when it has ≥ 10 names, else the watchlist followed by the S&P 100 (deduped, capped). */
+export function defaultList(watchlist: string[], base: readonly string[] = SP100): string[] {
   const wl = sanitizeTickers(watchlist);
   if (wl.length >= WATCHLIST_ONLY_MIN) return wl;
-  return addTickers(wl, [...spLeaders]).list;
+  return addTickers(wl, [...base]).list;
 }
 
 export function sameList(a: string[] | null | undefined, b: string[] | null | undefined): boolean {

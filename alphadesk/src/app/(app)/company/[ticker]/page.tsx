@@ -85,7 +85,7 @@ export default async function CompanyPage({ params }: { params: { ticker: string
           ) : <LockedSection feature="financials" />}
           {access.financials ? (
             <Suspense fallback={<FundamentalsSkeleton />}>
-              <FundamentalsSection ticker={ticker} />
+              <FundamentalsSection ticker={ticker} user={{ id: user.id, orgId: user.orgId }} />
             </Suspense>
           ) : <LockedFundamentals />}
           {access.analystResearch ? (

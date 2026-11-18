@@ -9,6 +9,12 @@ export const DEFAULT_ERP = 5.0;
 export const DEFAULT_TERMINAL_GROWTH = 2.5;
 /** Projection horizon of the DCF (years). */
 export const DCF_YEARS = 3;
+/** Graham (1974) constants: no-growth P/E, growth multiplier, AAA yield when published (percent). */
+export const GRAHAM_CONSTANTS = { basePe: 8.5, growthMultiplier: 2, baseYield: 4.4 } as const;
+export interface GrahamConstants { basePe: number; growthMultiplier: number; baseYield: number }
+/** PEG bands: below `fairFrom` = low, `fairFrom`…`richAbove` = fair, above `richAbove` = rich. */
+export const PEG_THRESHOLDS = { fairFrom: 1, richAbove: 2 } as const;
+export interface PegThresholds { fairFrom: number; richAbove: number }
 
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -39,9 +45,9 @@ export function cagr(start: number | null | undefined, end: number | null | unde
  * 8.5 = P/E for a no-growth company; 4.4 = the average AAA yield when Graham published.
  * Null when EPS ≤ 0, Y ≤ 0 or inputs missing (formula is not meaningful for loss-makers).
  */
-export function grahamValue(eps: number | null | undefined, gPct: number | null | undefined, yPct: number | null | undefined): number | null {
+export function grahamValue(eps: number | null | undefined, gPct: number | null | undefined, yPct: number | null | undefined, c: GrahamConstants = GRAHAM_CONSTANTS): number | null {
   if (!isNum(eps) || !isNum(gPct) || !isNum(yPct) || eps <= 0 || yPct <= 0) return null;
-  const v = (eps * (8.5 + 2 * gPct) * 4.4) / yPct;
+  const v = (eps * (c.basePe + c.growthMultiplier * gPct) * c.baseYield) / yPct;
   return v > 0 ? v : null;
 }
 
@@ -178,8 +184,15 @@ export function peg(pe: number | null | undefined, growthPct: number | null | un
   if (!isNum(pe) || !isNum(growthPct) || pe <= 0 || growthPct <= 0) return null;
   return pe / growthPct;
 }
-export function pegBand(v: number): PegBand {
-  return v < 1 ? 'below1' : v <= 2 ? 'fair' : 'rich';
+export function pegBand(v: number, t: PegThresholds = PEG_THRESHOLDS): PegBand {
+  return v < t.fairFrom ? 'below1' : v <= t.richAbove ? 'fair' : 'rich';
+}
+/** Explanation of a PEG band for the given thresholds. */
+export function pegBandText(band: PegBand, t: PegThresholds = PEG_THRESHOLDS): string {
+  const f = (n: number) => String(Number(n.toFixed(2)));
+  if (band === 'below1') return `Below ${f(t.fairFrom)} — the multiple looks low relative to expected growth (potentially undervalued vs growth).`;
+  if (band === 'fair') return `${f(t.fairFrom)}–${f(t.richAbove)} — the multiple is broadly in line with expected growth.`;
+  return `Above ${f(t.richAbove)} — the multiple is rich relative to expected growth.`;
 }
 export const PEG_BAND_TEXT: Record<PegBand, string> = {
   below1: 'Below 1 — the multiple looks low relative to expected growth (potentially undervalued vs growth).',

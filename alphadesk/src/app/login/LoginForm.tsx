@@ -33,9 +33,11 @@ function GoogleMark() {
   );
 }
 
-export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true, next, initialError, initialEmail = '' }: {
-  googleEnabled: boolean; ownerLogin?: boolean; demoLogin?: boolean; next: string; initialError?: string; initialEmail?: string;
+export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true, signupEnabled = true, mode = 'signin', next, initialError, initialEmail = '' }: {
+  googleEnabled: boolean; ownerLogin?: boolean; demoLogin?: boolean; signupEnabled?: boolean; mode?: 'signin' | 'signup'; next: string; initialError?: string; initialEmail?: string;
 }) {
+  const signup = mode === 'signup';
+  const [name, setName] = React.useState('');
   const router = useRouter();
   const [email, setEmail] = React.useState(initialEmail);
   const [password, setPassword] = React.useState('');
@@ -43,8 +45,9 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState(initialError);
   const [success, setSuccess] = React.useState(false);
-  const needsPassword = ownerLogin;
-  const noMethod = !ownerLogin && !demoLogin && !googleEnabled;
+  const needsPassword = ownerLogin || signupEnabled || signup;
+  const noMethod = !ownerLogin && !demoLogin && !googleEnabled && !signupEnabled;
+  const pwHint = password.length === 0 ? null : password.length < 10 ? 'At least 10 characters' : !/[A-Za-z]/.test(password) || !/\d/.test(password) ? 'Add a letter and a number' : null;
 
   async function login(addr: string, pw: string, key: string) {
     setBusy(key);
@@ -60,7 +63,7 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
       if (r?.error === 'RateLimited') {
         setError(loginErrorMessage('RateLimited'));
       } else {
-        setError(ownerLogin ? 'Email or password is incorrect.' : 'No account found for that email.');
+        setError(needsPassword ? 'Email or password is incorrect.' : 'No account found for that email.');
       }
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -68,10 +71,34 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
     setBusy(null);
   }
 
+  async function register(addr: string) {
+    setBusy('form');
+    setError(undefined);
+    try {
+      const r = await fetch('/api/auth/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, email: addr, password }) });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => null)) as { error?: { message?: string; code?: string } } | null;
+        setError(r.status === 429 ? loginErrorMessage('RateLimited') : j?.error?.message ?? 'Could not create the account. Try again.');
+        setBusy(null);
+        return;
+      }
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+      setBusy(null);
+      return;
+    }
+    await login(addr, password, 'form'); // signed straight in
+  }
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const addr = email.trim().toLowerCase();
     if (!addr) return;
+    if (signup) {
+      if (pwHint) { setError(`Password: ${pwHint.toLowerCase()}.`); return; }
+      register(addr);
+      return;
+    }
     login(addr, needsPassword ? password : '', 'form');
   };
 
@@ -113,11 +140,11 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
               <Image src="/nidhiksh-logo.png" alt="" width={56} height={56} className="rounded-xl lg:hidden" priority />
               <h1 className="text-2xl font-semibold tracking-tight">
                 <span className="lg:hidden">Nidhiksh <span className="text-accent">Pulse</span></span>
-                <span className="hidden lg:inline">Sign in</span>
+                <span className="hidden lg:inline">{signup ? 'Create your account' : 'Sign in'}</span>
               </h1>
               <p className="text-sm text-muted">
                 <span className="lg:hidden">Research &amp; decision workspace for PMs and analysts.</span>
-                <span className="hidden lg:inline">Welcome back. Sign in to your workspace.</span>
+                <span className="hidden lg:inline">{signup ? 'Start free. Upgrade to Pro any time.' : 'Welcome back. Sign in to your workspace.'}</span>
               </p>
             </div>
 
@@ -133,11 +160,17 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
                 <p className="text-sm text-muted">Sign-in is not configured on this deployment. Set <code className="font-mono text-xs">PULSE_OWNER_EMAIL</code> and <code className="font-mono text-xs">PULSE_OWNER_PASSWORD</code>, or Google OAuth.</p>
               ) : (
                 <>
-                  {(ownerLogin || demoLogin) && (
+                  {(ownerLogin || demoLogin || signupEnabled) && (
                     <form onSubmit={onSubmit} className="space-y-4" noValidate={false}>
+                      {signup && (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="name">Name</Label>
+                          <Input id="name" name="name" autoComplete="name" required autoFocus maxLength={80} value={name} onChange={(e) => setName(e.target.value)} disabled={!!busy || success} />
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <Label htmlFor="email">Email</Label>
-                        <Input id="email" name="email" type="email" autoComplete="username email" inputMode="email" required autoFocus
+                        <Input id="email" name="email" type="email" autoComplete="username email" inputMode="email" required autoFocus={!signup}
                           placeholder="you@fund.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!!busy || success}
                           aria-invalid={!!error || undefined} />
                       </div>
@@ -145,7 +178,7 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
                         <div className="space-y-1.5">
                           <Label htmlFor="password">Password</Label>
                           <div className="relative">
-                            <Input id="password" name="password" type={showPw ? 'text' : 'password'} autoComplete="current-password" required
+                            <Input id="password" name="password" type={showPw ? 'text' : 'password'} autoComplete={signup ? 'new-password' : 'current-password'} required minLength={signup ? 10 : undefined}
                               value={password} onChange={(e) => setPassword(e.target.value)} disabled={!!busy || success} className="pr-10"
                               aria-invalid={!!error || undefined} />
                             <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? 'Hide password' : 'Show password'} aria-pressed={showPw}
@@ -153,11 +186,12 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
                               {showPw ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
                             </button>
                           </div>
+                          {signup && <p className={`text-[11px] ${pwHint ? 'text-warn' : 'text-muted'}`}>{pwHint ?? 'At least 10 characters, with a letter and a number.'}</p>}
                         </div>
                       )}
                       <Button type="submit" className="w-full font-semibold" disabled={!!busy || success} aria-busy={busy === 'form'}>
                         {busy === 'form' || success ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ArrowRight className="h-4 w-4" aria-hidden />}
-                        {success ? 'Signing you in…' : busy === 'form' ? 'Signing in…' : needsPassword ? 'Sign in' : 'Continue with email'}
+                        {success ? 'Signing you in…' : busy === 'form' ? (signup ? 'Creating account…' : 'Signing in…') : signup ? 'Create free account' : needsPassword ? 'Sign in' : 'Continue with email'}
                       </Button>
                     </form>
                   )}
@@ -180,7 +214,15 @@ export function LoginForm({ googleEnabled, ownerLogin = false, demoLogin = true,
               <p className="mt-5 flex items-center gap-1.5 text-[11px] text-muted"><ShieldCheck className="h-3.5 w-3.5 text-up" aria-hidden /> Encrypted session · attempts are rate-limited</p>
             </div>
 
-            {demoLogin && (
+            {signupEnabled && (
+              <p className="mt-4 text-center text-sm text-muted lg:text-left">
+                {signup
+                  ? <>Already have an account? <a href="/login" className="font-medium text-info hover:underline">Sign in</a></>
+                  : <>New to Nidhiksh Pulse? <a href="/signup" className="font-medium text-info hover:underline">Create a free account</a></>}
+              </p>
+            )}
+
+            {demoLogin && !signup && (
               <div className="mt-4 rounded-xl border border-dashed border-warn/40 bg-warn/[0.04] p-4">
                 <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-warn"><Wrench className="h-3.5 w-3.5" aria-hidden /> Development · demo sign-in</p>
                 <p className="mb-3 text-[11px] text-muted">Passwordless demo users. Disabled in production unless <code className="font-mono">ALLOW_DEMO_LOGIN=1</code>.</p>

@@ -3,6 +3,8 @@ import type { NextAuthOptions } from 'next-auth';
 import { getServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { verifyPassword } from './password';
+import { ensureOwnerDefaults } from './owner-defaults.server';
 import GoogleProvider from 'next-auth/providers/google';
 import { db } from './db';
 import { normalizePlan, type Plan, type Role } from './plans';
@@ -64,7 +66,14 @@ export const authOptions: NextAuthOptions = {
         if (ownerLoginEnabled && email === owner) {
           if (!safeEqual(String(creds?.password ?? ''), process.env.PULSE_OWNER_PASSWORD!)) return fail('bad_password');
           const u = await upsertOwner(email);
+          await ensureOwnerDefaults(u);
           return { id: u.id, email: u.email, name: u.name, image: u.image };
+        }
+        // Self-service accounts (sign-up): email + password, verified against the stored scrypt hash.
+        const member = await db.user.findUnique({ where: { email } });
+        if (member?.passwordHash) {
+          if (!(await verifyPassword(String(creds?.password ?? ''), member.passwordHash))) return fail('bad_password');
+          return { id: member.id, email: member.email, name: member.name, image: member.image };
         }
         if (!demoLoginEnabled) return fail(ownerLoginEnabled ? 'unknown_user' : 'demo_disabled');
         const user = await db.user.findUnique({ where: { email } });
