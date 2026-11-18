@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from '@/lib/cache';
 import { log } from '@/lib/log';
+import { meteredFetch } from '@/lib/usage-meter';
 
 export interface Yield { series: string; value: number; change: number; date: string }
 
@@ -11,7 +12,7 @@ export async function fredLatest(series: string): Promise<Yield | null> {
   return cache.wrap(`fred:${series}`, async () => {
     try {
       const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(series)}&api_key=${key}&file_type=json&sort_order=desc&limit=10`;
-      const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      const r = await meteredFetch('fred', url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as { observations?: { date: string; value: string }[] };
       const obs = (j.observations ?? []).map((o) => ({ date: o.date, v: Number(o.value) })).filter((o) => Number.isFinite(o.v));
@@ -31,7 +32,7 @@ export async function fredHistory(series: string, points = 30): Promise<{ date: 
   return cache.wrap(`fred:hist:${series}:${points}`, async () => {
     try {
       const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(series)}&api_key=${key}&file_type=json&sort_order=desc&limit=${points + 10}`;
-      const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      const r = await meteredFetch('fred', url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
       if (!r.ok) return [];
       const j = (await r.json()) as { observations?: { date: string; value: string }[] };
       return (j.observations ?? []).map((o) => ({ date: o.date, value: Number(o.value) })).filter((o) => Number.isFinite(o.value)).slice(0, points).reverse();

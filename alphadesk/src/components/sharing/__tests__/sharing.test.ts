@@ -5,20 +5,15 @@ import {
 } from '../snapshot';
 
 describe('share gating by plan', () => {
-  it('blocks FREE from all sharing with upgrade to PRO', () => {
-    for (const t of ['note', 'screen', 'portfolio', 'thread'] as const) {
+  it('blocks FREE from all sharing with upgrade to Pro', () => {
+    for (const t of ['note', 'screen', 'portfolio', 'thread', 'basket'] as const) {
       const g = shareGate({ plan: 'FREE' }, t);
       expect(g.allowed).toBe(false);
-      expect(g.upgradeTo).toBe('PRO');
+      expect(g.upgradeTo).toBe('PRO_PLUS');
     }
-    expect(shareGate({ plan: 'FREE' }, 'basket').upgradeTo).toBe('PRO');
   });
-  it('allows PRO to share notes/screens/portfolios/threads but not baskets', () => {
-    for (const t of ['note', 'screen', 'portfolio', 'thread'] as const) expect(shareGate({ plan: 'PRO' }, t).allowed).toBe(true);
-    const b = shareGate({ plan: 'PRO' }, 'basket');
-    expect(b.allowed).toBe(false);
-    expect(b.upgradeTo).toBe('PRO_PLUS');
-    expect(b.reason).toMatch(/basket/i);
+  it('legacy PRO rows share like Pro', () => {
+    for (const t of ['note', 'screen', 'portfolio', 'thread', 'basket'] as const) expect(shareGate({ plan: 'PRO' }, t).allowed).toBe(true);
   });
   it('allows PRO_PLUS to share everything', () => {
     for (const t of ['note', 'screen', 'portfolio', 'thread', 'basket'] as const) expect(shareGate({ plan: 'PRO_PLUS' }, t).allowed).toBe(true);

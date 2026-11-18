@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
 import { Building2, CornerDownLeft } from 'lucide-react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { NAV } from '@/config/nav';
+import { visibleNav } from '@/config/nav';
+import { useCurrentUser } from './UserContext';
 import type { UniverseItem } from '@/lib/data/types';
 
 let universeCache: UniverseItem[] | null = null;
 
 /** ⌘K palette: ticker search over universe → /company/[ticker], plus navigation commands. */
 export function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { user } = useCurrentUser();
   const router = useRouter();
   const [items, setItems] = React.useState<UniverseItem[]>(universeCache ?? []);
   const [q, setQ] = React.useState('');
@@ -47,7 +49,7 @@ export function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChang
                 ))}
               </Command.Group>
               <Command.Group heading="Go to" className="px-1 text-[11px] text-muted [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5">
-                {NAV.map((n) => (
+                {visibleNav(user.canSettings).map((n) => (
                   <Command.Item key={n.href} value={`go ${n.label}`} onSelect={() => go(n.href)} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2 text-sm text-text aria-selected:bg-panel-2">
                     <n.icon className="h-4 w-4 text-muted" /> {n.label}
                   </Command.Item>

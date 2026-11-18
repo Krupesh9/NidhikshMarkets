@@ -110,21 +110,18 @@ describe('usage gating', () => {
     const s = store(0);
     const r = await authorizeAiQuery({ plan: 'FREE' }, s);
     expect(r.allowed).toBe(false);
-    if (!r.allowed) expect(r.gate.upgradeTo).toBe('PRO');
-    expect(s.increment).not.toHaveBeenCalled();
-  });
-  it('counts PRO queries and reports remaining', async () => {
-    const s = store(5);
-    const r = await authorizeAiQuery({ plan: 'PRO' }, s);
-    expect(r).toEqual({ allowed: true, usage: { used: 6, limit: 100, remaining: 94 } });
-    expect(s.increment).toHaveBeenCalledTimes(1);
-  });
-  it('blocks PRO at 100/month with Pro Plus upgrade, and PRO_PLUS is unlimited', async () => {
-    const s = store(100);
-    const r = await authorizeAiQuery({ plan: 'PRO' }, s);
-    expect(r.allowed).toBe(false);
     if (!r.allowed) expect(r.gate.upgradeTo).toBe('PRO_PLUS');
     expect(s.increment).not.toHaveBeenCalled();
+  });
+  it('counts Pro queries (unlimited, still metered)', async () => {
+    const s = store(5);
+    const r = await authorizeAiQuery({ plan: 'PRO_PLUS' }, s);
+    expect(r).toEqual({ allowed: true, usage: { used: 6, limit: null, remaining: null } });
+    expect(s.increment).toHaveBeenCalledTimes(1);
+  });
+  it('legacy PRO rows are treated as Pro (unlimited)', async () => {
+    const r = await authorizeAiQuery({ plan: 'PRO' }, store(100));
+    expect(r.allowed).toBe(true);
     const pp = await authorizeAiQuery({ plan: 'PRO_PLUS' }, store(5000));
     expect(pp).toMatchObject({ allowed: true, usage: { limit: null, remaining: null } });
   });

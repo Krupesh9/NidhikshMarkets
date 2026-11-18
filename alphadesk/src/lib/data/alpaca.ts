@@ -4,6 +4,7 @@ import { isIntradayRange } from './types';
 import { intradaySpec, intradayStart, isoMinute, lastSessions } from './intraday';
 import { MOCK_BY_TICKER } from './mock/universe';
 import { log } from '../log';
+import { meteredFetch } from '../usage-meter';
 
 /**
  * Alpaca Market Data adapter (data API only — no trading/order endpoints are ever called).
@@ -27,7 +28,7 @@ const barFeed = () => ((process.env.ALPACA_FEED || 'sip').toLowerCase() === 'iex
 async function get<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
   if (!alpacaEnabled()) throw new Error('alpaca: not configured');
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
-  const res = await fetch(`${BASE}${path}?${qs}`, {
+  const res = await meteredFetch('alpaca', `${BASE}${path}?${qs}`, {
     headers: { 'APCA-API-KEY-ID': process.env.ALPACA_API_KEY!, 'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY!, Accept: 'application/json' },
     signal: AbortSignal.timeout(TIMEOUT_MS),
     cache: 'no-store',

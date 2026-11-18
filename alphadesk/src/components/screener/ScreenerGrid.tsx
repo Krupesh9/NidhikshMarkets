@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import {
   flexRender, getCoreRowModel, useReactTable, type ColumnDef as TColumnDef, type SortingState, type VisibilityState,
 } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ChevronsUpDown, Info, X } from 'lucide-react';
 import { Delta } from '@/components/ui/delta';
 import { Sparkline } from '@/components/ui/sparkline';
 import { Badge } from '@/components/ui/badge';
+import { Tip } from '@/components/ui/tooltip';
 import { isTypingTarget } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 import { formatBigMoney, SCREEN_COLUMNS } from '@/lib/screener/columns';
@@ -17,40 +18,63 @@ import type { ScreenResultRow } from '@/lib/screener/types';
 import { WhyNow } from './WhyNow';
 
 const SORTABLE = new Set<string>(SORTABLE_KEYS);
-const num = (v: number, dp = 1, suffix = '') => (Number.isFinite(v) ? `${v.toFixed(dp)}${suffix}` : '—');
-const signedCls = (v: number) => (!Number.isFinite(v) || v === 0 ? 'text-muted' : v > 0 ? 'text-up' : 'text-down');
-const signed = (v: number, dp = 1) => (Number.isFinite(v) ? `${v > 0 ? '+' : ''}${v.toFixed(dp)}%` : '—');
+const fin = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
+const NA = <span className="text-muted" title="Not available">—</span>;
+const num = (v: number | null, dp = 1, suffix = '') => (fin(v) ? `${v.toFixed(dp)}${suffix}` : NA);
+const signedCls = (v: number | null) => (!fin(v) || v === 0 ? 'text-muted' : v > 0 ? 'text-up' : 'text-down');
+const signed = (v: number | null, dp = 1) => (fin(v) ? `${v > 0 ? '+' : ''}${v.toFixed(dp)}%` : '—');
+/** P/E or EV/EBITDA: '—' when unavailable (incl. funds), 'n/m' when negative. */
+const multiple = (v: number | null, isEtf?: boolean) => (!fin(v) || isEtf ? NA : v > 0 ? num(v, 1, 'x') : <span className="text-muted">n/m</span>);
 
-function buildColumns(expanded: Set<string>, toggle: (t: string) => void): TColumnDef<ScreenResultRow>[] {
+function buildColumns(expanded: Set<string>, toggle: (t: string) => void, onRemove?: (t: string) => void): TColumnDef<ScreenResultRow>[] {
   const cell: Record<string, TColumnDef<ScreenResultRow>['cell']> = {
     ticker: ({ row }) => {
       const t = row.original.ticker;
       const open = expanded.has(t);
       return (
-        <span className="flex items-center gap-1">
+        <span className="flex min-w-[96px] items-center gap-1">
           <button type="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); toggle(t); }} className="rounded p-0.5 text-muted hover:text-text" aria-label={`${open ? 'Hide' : 'Show'} why now for ${t}`} aria-expanded={open}>
             {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
           <Link href={`/company/${t}`} className="font-mono font-semibold text-info hover:underline" onClick={(e) => e.stopPropagation()}>{t}</Link>
+          {row.original.isEtf && <Badge variant="outline" className="ml-0.5 px-1 py-0 text-[9px]">ETF</Badge>}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(t); }}
+              className={cn(
+                'ml-auto rounded p-0.5 text-muted hover:bg-down/10 hover:text-down focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info',
+                row.original.status === 'not_found' ? 'opacity-100' : 'opacity-40 group-hover:opacity-100',
+              )}
+              aria-label={`Remove ${t}`}
+              title={`Remove ${t} from this list`}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
         </span>
       );
     },
-    name: ({ row }) => <span className="block max-w-[200px] truncate" title={row.original.name}>{row.original.name}</span>,
+    name: ({ row }) => row.original.status === 'not_found'
+      ? <Badge variant="warn" title="No quote at Alpaca and no profile at FMP">Not found</Badge>
+      : <span className="block max-w-[200px] truncate" title={row.original.name}>{row.original.name}</span>,
+    group: ({ row }) => (row.original.group ? <Badge variant="outline" className="whitespace-nowrap">{row.original.group}</Badge> : <span className="text-muted">—</span>),
     sector: ({ row }) => <span className="block max-w-[160px] truncate text-muted">{row.original.sector}</span>,
     industry: ({ row }) => <span className="block max-w-[160px] truncate text-muted">{row.original.industry}</span>,
     country: ({ row }) => <span className="text-muted">{row.original.country}</span>,
-    marketCap: ({ row }) => formatBigMoney(row.original.marketCap),
-    price: ({ row }) => `$${row.original.price.toFixed(2)}`,
+    marketCap: ({ row }) => (fin(row.original.marketCap) ? formatBigMoney(row.original.marketCap) : NA),
+    price: ({ row }) => (fin(row.original.price) ? `$${row.original.price.toFixed(2)}` : NA),
     changePct: ({ row }) => <Delta value={row.original.changePct} badge className="text-xs" />,
     sparkline: ({ row }) => <Sparkline data={row.original.sparkline} width={64} height={18} label={`${row.original.ticker} 30-day trend`} />,
-    pe: ({ row }) => (row.original.pe > 0 ? num(row.original.pe, 1, 'x') : <span className="text-muted">n/m</span>),
-    evEbitda: ({ row }) => (row.original.evEbitda > 0 ? num(row.original.evEbitda, 1, 'x') : <span className="text-muted">n/m</span>),
+    pe: ({ row }) => multiple(row.original.pe, row.original.isEtf),
+    evEbitda: ({ row }) => multiple(row.original.evEbitda, row.original.isEtf),
     revenueGrowth: ({ row }) => <span className={signedCls(row.original.revenueGrowth)}>{signed(row.original.revenueGrowth)}</span>,
     epsRevision30d: ({ row }) => <span className={signedCls(row.original.epsRevision30d)}>{signed(row.original.epsRevision30d)}</span>,
-    shortInterestPct: ({ row }) => <span className={row.original.shortInterestPct >= 10 ? 'text-warn' : ''}>{num(row.original.shortInterestPct, 1, '%')}</span>,
+    shortInterestPct: ({ row }) => <span className={(row.original.shortInterestPct ?? 0) >= 10 ? 'text-warn' : ''}>{num(row.original.shortInterestPct, 1, '%')}</span>,
     insiderBuying90d: ({ row }) => {
       const v = row.original.insiderBuying90d;
-      return <span className={signedCls(v)}>{v === 0 ? '—' : `${v > 0 ? '+' : ''}${formatBigMoney(v)}`}</span>;
+      if (!fin(v)) return NA;
+      return <span className={signedCls(v)} title={v === 0 ? 'No open-market insider buys or sells in 90 days' : undefined}>{v === 0 ? '$0' : `${v > 0 ? '+' : ''}${formatBigMoney(v)}`}</span>;
     },
     esgScore: ({ row }) => num(row.original.esgScore, 0),
     nextEarnings: ({ row }) => {
@@ -72,16 +96,23 @@ function buildColumns(expanded: Set<string>, toggle: (t: string) => void): TColu
       </button>
     ),
   };
-  return SCREEN_COLUMNS.map((c) => ({
+  const cols: TColumnDef<ScreenResultRow>[] = SCREEN_COLUMNS.map((c) => ({
     id: c.id,
     accessorFn: (r: ScreenResultRow) => (c.id === 'sparkline' || c.id === 'whyNow' ? null : c.get(r)),
-    header: c.label,
+    header: c.note
+      ? () => (
+        <Tip content={c.note}>
+          <span className="inline-flex items-center gap-0.5">{c.label}<Info className="h-2.5 w-2.5 opacity-60" aria-hidden /></span>
+        </Tip>
+      )
+      : c.label,
     enableSorting: SORTABLE.has(c.id),
     enableHiding: c.id !== 'ticker',
     sortDescFirst: !['ticker', 'name', 'sector', 'industry', 'country', 'nextEarnings'].includes(c.id),
     cell: cell[c.id],
     meta: { numeric: !['text', 'list', 'date'].includes(c.format) || c.id === 'nextEarnings' },
   }));
+  return cols;
 }
 
 interface Props {
@@ -92,9 +123,11 @@ interface Props {
   onColumnVisibilityChange: (v: VisibilityState) => void;
   compact: boolean;
   dim?: boolean;
+  /** show a remove (x) button per row */
+  onRemove?: (ticker: string) => void;
 }
 
-export function ScreenerGrid({ rows, sorting, onSortingChange, columnVisibility, onColumnVisibilityChange, compact, dim }: Props) {
+export function ScreenerGrid({ rows, sorting, onSortingChange, columnVisibility, onColumnVisibilityChange, compact, dim, onRemove }: Props) {
   const router = useRouter();
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [active, setActive] = React.useState(0);
@@ -109,7 +142,7 @@ export function ScreenerGrid({ rows, sorting, onSortingChange, columnVisibility,
     return () => ro.disconnect();
   }, []);
   const toggle = React.useCallback((t: string) => setExpanded((s) => { const n = new Set(s); if (n.has(t)) n.delete(t); else n.add(t); return n; }), []);
-  const columns = React.useMemo(() => buildColumns(expanded, toggle), [expanded, toggle]);
+  const columns = React.useMemo(() => buildColumns(expanded, toggle, onRemove), [expanded, toggle, onRemove]);
 
   const table = useReactTable({
     data: rows,
@@ -197,7 +230,7 @@ export function ScreenerGrid({ rows, sorting, onSortingChange, columnVisibility,
                   aria-selected={isActive}
                   onClick={() => setActive(i)}
                   onDoubleClick={() => router.push(`/company/${r.original.ticker}`)}
-                  className={cn('group cursor-default', isActive ? 'bg-info/10' : 'hover:bg-panel-2/60')}
+                  className={cn('group cursor-default', isActive ? 'bg-info/10' : 'hover:bg-panel-2/60', r.original.status === 'not_found' && 'opacity-70')}
                 >
                   {r.getVisibleCells().map((c) => {
                     const pinned = c.column.getIsPinned() === 'left';

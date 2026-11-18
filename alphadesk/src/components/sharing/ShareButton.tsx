@@ -75,7 +75,7 @@ export function ShareButton({ itemType, itemId, snapshot, title, label = 'Share'
       const snap = typeof snapshot === 'function' ? snapshot() : snapshot ?? {};
       const r = await fetch('/api/shares', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemType, itemId, snapshot: snap, visibility, ...(title ? { title } : {}) }) });
       const j = await r.json().catch(() => ({}));
-      if (r.status === 402) { setGate({ allowed: false, reason: j?.error?.message, upgradeTo: j?.error?.details?.upgradeTo }); return; }
+      if (j?.error?.code === 'upgrade_required') { setGate({ allowed: false, reason: j?.error?.message, upgradeTo: j?.error?.details?.upgradeTo }); return; }
       if (!r.ok) throw new Error(j?.error?.message ?? `HTTP ${r.status}`);
       const url = `${window.location.origin}${j.path}`;
       setResult({ token: j.token, url });

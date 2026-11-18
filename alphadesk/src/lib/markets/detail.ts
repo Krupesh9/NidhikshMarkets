@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from '@/lib/cache';
 import { log } from '@/lib/log';
+import { meteredFetch } from '@/lib/usage-meter';
 import { getMarketData } from '@/lib/data';
 import type { HistoryRange, NewsItem, Quote } from '@/lib/data/types';
 import { getIndexHistory, getIndexQuote, FMP_SITE } from '@/lib/data/fmp';
@@ -155,7 +156,7 @@ export async function googleNewsSearch(query: string, limit = 20): Promise<NewsI
     try {
       const q = `${query} when:2d`;
       const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
-      const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; NidhikshPulse/1.0; research headlines)' }, cache: 'no-store', signal: AbortSignal.timeout(6_000) });
+      const r = await meteredFetch('news', url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; NidhikshPulse/1.0; research headlines)' }, cache: 'no-store', signal: AbortSignal.timeout(6_000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return parseFeed(await r.text()).filter((it) => it.publishedAt).slice(0, limit).map((it): NewsItem => {
         const publisher = googlePublisher(it.source, 'Google News');

@@ -95,7 +95,7 @@ export function OwnershipPanel({ ticker, insiders, institutional, instSource, in
           {top[0] && <span className="text-[11px] text-muted">as of {fmt.date(top[0].reportDate)}</span>}
         </div>
         {top.length === 0 ? (
-          <EmptyState icon={Building2} title="No 13F holders" description={`No institutional ownership data returned for ${ticker}. 13F coverage excludes non-US listings and very recent IPOs.`} />
+          <EmptyState icon={Building2} title="No 13F holders" description={`Top institutional holders for ${ticker} need a 13F data feed (e.g. an FMP paid plan); the current data plan doesn't include one. Insider trades on the left are live from SEC Form 4.`} />
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full text-xs">

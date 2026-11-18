@@ -1,6 +1,7 @@
 import 'server-only';
 import { getMarketData } from '@/lib/data';
 import { getAnalystView } from '@/lib/data/fmp';
+import { hasFeature } from '@/lib/plans';
 import { getCalendarEvents } from '@/lib/calendar';
 import { addDays, todayET } from '@/lib/calendar/dates';
 import type {
@@ -25,6 +26,16 @@ export function combineMeta(...metas: DataMeta[]): SectionMeta {
 
 const md = () => getMarketData();
 
+/**
+ * What the viewer's plan may see. Gated data is never FETCHED for a Free user (not just hidden), so it can't leak
+ * through props, the RSC payload or API JSON. Build with `companyAccess(user)`.
+ */
+export interface CompanyAccess { analystResearch: boolean; financials: boolean; ownership: boolean }
+export const FULL_ACCESS: CompanyAccess = { analystResearch: true, financials: true, ownership: true };
+export function companyAccess(user: { plan: string } | null | undefined): CompanyAccess {
+  return { analystResearch: hasFeature(user, 'analystResearch'), financials: hasFeature(user, 'financials'), ownership: hasFeature(user, 'ownership') };
+}
+
 // ------------------------------------------------------------- core (header)
 
 export interface CoreData {
@@ -35,9 +46,11 @@ export interface CoreData {
   week52: { high: number | null; low: number | null };
   marketCap: number | null;
   valuation: Valuation;
-  /** Forward EPS / P/E from analyst consensus (null fields when no real or same-mode estimate is available). */
-  forward: ForwardValuation;
-  sources: { price: SourceRef; marketCap: SourceRef; pe: SourceRef; evEbitda: SourceRef; range: SourceRef; profile: SourceRef; fwdEps: SourceRef; fwdPe: SourceRef };
+  /** Forward EPS / P/E from analyst consensus (null fields when no real or same-mode estimate is available). Null when the plan lacks analystResearch. */
+  forward: ForwardValuation | null;
+  /** evEbitda/ev are null (and evBasis empty) when the plan lacks `financials`. */
+  sources: { price: SourceRef; marketCap: SourceRef; pe: SourceRef; evEbitda: SourceRef | null; range: SourceRef; profile: SourceRef; fwdEps: SourceRef | null; fwdPe: SourceRef | null };
+  access: CompanyAccess;
   /** Header-critical data only (profile, quote, 1Y history, financials) — drives the page-level MockBanner. */
   meta: SectionMeta;
   found: boolean;
@@ -54,7 +67,7 @@ function quoteFromBars(ticker: string, bars: Bar[]): Quote | null {
   };
 }
 
-export async function loadCore(ticker: string): Promise<CoreData> {
+export async function loadCore(ticker: string, access: CompanyAccess = FULL_ACCESS): Promise<CoreData> {
   // 52-week range + fallback quote always come from DAILY 1Y bars (never the intraday 1D/1W ranges).
   const [p, q, h] = await Promise.all([md().getProfile(ticker), md().getQuote(ticker), md().getHistory(ticker, '1Y')]);
   const profile = p.data;
@@ -64,7 +77,7 @@ export async function loadCore(ticker: string): Promise<CoreData> {
   // Only spend provider calls (incl. the 25/day Alpha Vantage quota) on statements/estimates once we know the symbol exists.
   const none = { data: null, meta: { source: [], isMock: true, asOf: new Date().toISOString(), provider: 'none' } };
   const [fa, fq, e] = found
-    ? await Promise.all([md().getFinancials(ticker, 'annual'), md().getFinancials(ticker, 'quarterly'), md().getEstimates(ticker)])
+    ? await Promise.all([md().getFinancials(ticker, 'annual'), md().getFinancials(ticker, 'quarterly'), access.analystResearch ? md().getEstimates(ticker) : Promise.resolve(none)])
     : [none, none, none];
   const hi = bars1Y.length ? Math.max(...bars1Y.map((b) => b.high)) : profile?.week52High || null;
   const lo = bars1Y.length ? Math.min(...bars1Y.map((b) => b.low)) : profile?.week52Low || null;
@@ -72,10 +85,12 @@ export async function loadCore(ticker: string): Promise<CoreData> {
   const secShares = (fq.data?.rows.at(-1) ?? fa.data?.rows.at(-1))?.sharesOutstanding || 0;
   const shares = (p.meta.isMock ? 0 : profile?.sharesOutstanding) || (fq.meta.isMock ? 0 : secShares) || profile?.sharesOutstanding || 0;
   const marketCap = (shares && quote ? shares * quote.price : 0) || quote?.marketCap || profile?.marketCap || null;
-  const valuation = deriveValuation({
+  const valuationAll = deriveValuation({
     price: quote?.price ?? null, marketCap, annual: fa.data?.rows ?? [], quarterly: fq.data?.rows ?? [],
     fallbackPe: profile?.pe, fallbackEvEbitda: profile?.evEbitda,
   });
+  // P/E (TTM) and EPS (TTM) are Free; EV/EBITDA is part of `financials`.
+  const valuation: Valuation = access.financials ? valuationAll : { ...valuationAll, evEbitda: null, ev: null, evBasis: '' };
   // Use consensus only when it is real, or when the price itself is simulated (pure demo mode) — never mix mock into a live header.
   const priceMock = q.data ? q.meta.isMock : h.meta.isMock;
   const est = e.data && (!e.meta.isMock || priceMock) ? e.data : null;
@@ -93,23 +108,27 @@ export async function loadCore(ticker: string): Promise<CoreData> {
     price: { id: priceSrc0?.id ?? `price:${ticker}`, name: priceSrc0?.name ?? `${ticker} price`, url: priceSrc0?.url, kind: kindFor(q.data ? q.meta.isMock : h.meta.isMock, 'price'), excerpt: priceText, locator: 'Quote' },
     marketCap: { id: `mcap:${ticker}`, name: `${ticker} market capitalisation`, kind: kindFor(q.meta.isMock || p.meta.isMock, 'price'), excerpt: marketCap ? `Market cap ≈ $${(marketCap / 1e9).toFixed(1)}B${shares && quote ? ` = ${(shares / 1e6).toFixed(0)}M shares × $${quote.price.toFixed(2)}` : ''} (${prov(q.meta)}${p.data ? ` / ${prov(p.meta)}` : ''}).` : 'Market cap unavailable.', locator: 'Derived' },
     pe: { id: `pe:${ticker}`, name: finSrc?.name ?? `${ticker} financial statements`, url: finSrc?.url, kind: kindFor(finMock, 'filing'), excerpt: valuation.peBasis, locator: 'Derived from income statement' },
-    evEbitda: { id: `ev:${ticker}`, name: finSrc?.name ?? `${ticker} financial statements`, url: finSrc?.url, kind: kindFor(finMock, 'filing'), excerpt: valuation.evBasis, locator: 'Derived from balance sheet + income statement' },
+    evEbitda: access.financials ? { id: `ev:${ticker}`, name: finSrc?.name ?? `${ticker} financial statements`, url: finSrc?.url, kind: kindFor(finMock, 'filing'), excerpt: valuation.evBasis, locator: 'Derived from balance sheet + income statement' } : null,
     range: { id: h.meta.source[0]?.id ?? `range:${ticker}`, name: h.meta.source[0]?.name ?? `${ticker} daily bars`, kind: kindFor(h.meta.isMock, 'price'), excerpt: hi && lo ? `52-week range $${lo.toFixed(2)} – $${hi.toFixed(2)} from ${bars1Y.length} daily bars (${prov(h.meta)}).` : '52-week range unavailable.', locator: 'Daily OHLC, trailing 1Y' },
-    fwdEps: { id: `fwdeps:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.epsBasis, locator: est?.forwardBasis ?? 'Forward EPS' },
-    fwdPe: { id: `fwdpe:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.peBasis, locator: 'Forward P/E' },
+    fwdEps: !access.analystResearch ? null : { id: `fwdeps:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.epsBasis, locator: est?.forwardBasis ?? 'Forward EPS' },
+    fwdPe: !access.analystResearch ? null : { id: `fwdpe:${ticker}`, name: estSrc0?.name ?? `${ticker} consensus estimates`, url: estSrc0?.url, kind: kindFor(!!est && e.meta.isMock, 'estimate'), excerpt: forward.peBasis, locator: 'Forward P/E' },
     profile: { id: p.meta.source[0]?.id ?? `profile:${ticker}`, name: p.meta.source[0]?.name ?? `${ticker} reference data`, url: profile?.website || undefined, kind: kindFor(p.meta.isMock, 'filing'), excerpt: profile?.description || 'No company description available.', locator: 'Company profile' },
   };
-  return { ticker, profile, quote, bars1Y, week52: { high: hi, low: lo }, marketCap, valuation, forward, sources, meta: combineMeta(p.meta, q.meta, h.meta, fa.meta, fq.meta), found };
+  // Provider profile multiples that belong to premium sections are zeroed so they can't leak via the aggregate API.
+  const safeProfile = profile && (!access.financials || !access.analystResearch)
+    ? { ...profile, evEbitda: access.financials ? profile.evEbitda : 0, forwardPe: access.analystResearch ? profile.forwardPe : 0 }
+    : profile;
+  return { ticker, profile: safeProfile, quote, bars1Y, week52: { high: hi, low: lo }, marketCap, valuation, forward: access.analystResearch ? forward : null, sources, access, meta: combineMeta(p.meta, q.meta, h.meta, fa.meta, fq.meta), found };
 }
 
 // ------------------------------------------------------------- chart events
 
 export interface ChartEventsData { events: ChartEvent[]; meta: SectionMeta }
 
-export async function loadChartEvents(ticker: string): Promise<ChartEventsData> {
-  const [f, n, i] = await Promise.all([md().getFilings(ticker), md().getNews(ticker), md().getInsiders(ticker)]);
-  const events = mergeEvents(filingsToEvents(f.data ?? []), insidersToEvents(i.data ?? []), newsToEvents(n.data ?? [], 15));
-  return { events, meta: combineMeta(f.meta, n.meta, i.meta) };
+export async function loadChartEvents(ticker: string, access: CompanyAccess = FULL_ACCESS): Promise<ChartEventsData> {
+  const [f, n, i] = await Promise.all([md().getFilings(ticker), md().getNews(ticker), access.ownership ? md().getInsiders(ticker) : Promise.resolve(null)]);
+  const events = mergeEvents(filingsToEvents(f.data ?? []), insidersToEvents(i?.data ?? []), newsToEvents(n.data ?? [], 15));
+  return { events, meta: i ? combineMeta(f.meta, n.meta, i.meta) : combineMeta(f.meta, n.meta) };
 }
 
 // ------------------------------------------------------------- financials
@@ -190,25 +209,32 @@ export async function loadNewsFilings(ticker: string): Promise<NewsFilingsData> 
 
 // ------------------------------------------------------------- aggregate (API / AI / sharing)
 
-export async function loadAggregate(ticker: string) {
-  const core = await loadCore(ticker);
+export async function loadAggregate(ticker: string, access: CompanyAccess = FULL_ACCESS) {
+  const core = await loadCore(ticker, access);
   if (!core.found) return { ticker, found: false as const };
   const [chart, fin, est, own, nf] = await Promise.all([
-    loadChartEvents(ticker), loadFinancials(ticker, core.profile?.cik), loadEstimates(ticker), loadOwnership(ticker), loadNewsFilings(ticker),
+    loadChartEvents(ticker, access),
+    access.financials ? loadFinancials(ticker, core.profile?.cik) : Promise.resolve(null),
+    access.analystResearch ? loadEstimates(ticker) : Promise.resolve(null),
+    access.ownership ? loadOwnership(ticker) : Promise.resolve(null),
+    loadNewsFilings(ticker),
   ]);
-  const metas = [core.meta, chart.meta, fin.meta, est.meta, own.meta, nf.meta];
+  const metas = [core.meta, chart.meta, fin?.meta, est?.meta, own?.meta, nf.meta].filter((m): m is SectionMeta => !!m);
+  const locked = (Object.keys(access) as (keyof CompanyAccess)[]).filter((k) => !access[k]);
   return {
     ticker, found: true as const,
-    profile: core.profile, quote: core.quote, marketCap: core.marketCap, week52: core.week52, valuation: core.valuation, headerSources: core.sources,
+    profile: core.profile, quote: core.quote, marketCap: core.marketCap, week52: core.week52, valuation: core.valuation, forward: core.forward, headerSources: core.sources,
     events: chart.events,
-    financials: { annual: fin.annual, quarterly: fin.quarterly, annualSources: fin.annualSources, quarterlySources: fin.quarterlySources },
-    estimates: est.estimates,
-    insiders: own.insiders, institutional: own.institutional,
+    financials: fin ? { annual: fin.annual, quarterly: fin.quarterly, annualSources: fin.annualSources, quarterlySources: fin.quarterlySources } : null,
+    estimates: est?.estimates ?? null,
+    insiders: own?.insiders ?? null, institutional: own?.institutional ?? null,
     news: nf.news, filings: nf.filings, catalysts: nf.catalysts,
+    /** Premium sections withheld for this viewer's plan (upgrade to unlock). */
+    locked,
     meta: {
       isMock: metas.some((m) => m.isMock),
       providers: Array.from(new Set(metas.flatMap((m) => m.providers))),
-      sections: { core: core.meta, events: chart.meta, financials: fin.meta, estimates: est.meta, ownership: own.meta, newsFilings: nf.meta },
+      sections: { core: core.meta, events: chart.meta, financials: fin?.meta ?? null, estimates: est?.meta ?? null, ownership: own?.meta ?? null, newsFilings: nf.meta },
       asOf: new Date().toISOString(),
       disclaimer: 'Research only — not investment advice.',
     },
@@ -216,10 +242,13 @@ export async function loadAggregate(ticker: string) {
 }
 
 /** All section metas (cached provider calls, so cheap after the sections load) — drives the page MockBanner. */
-export async function loadAllMetas(ticker: string, cik?: string, includeBody = true): Promise<SectionMeta> {
-  const core = await loadCore(ticker);
+export async function loadAllMetas(ticker: string, cik?: string, includeBody = true, access: CompanyAccess = FULL_ACCESS): Promise<SectionMeta> {
+  const core = await loadCore(ticker, access);
   if (!includeBody) return core.meta;
-  const parts = await Promise.all([loadChartEvents(ticker), loadFinancials(ticker, cik), loadEstimates(ticker), loadOwnership(ticker), loadNewsFilings(ticker)]);
+  const parts = await Promise.all([
+    loadChartEvents(ticker, access), loadNewsFilings(ticker),
+    ...(access.financials ? [loadFinancials(ticker, cik)] : []), ...(access.analystResearch ? [loadEstimates(ticker)] : []), ...(access.ownership ? [loadOwnership(ticker)] : []),
+  ]);
   const all = [core.meta, ...parts.map((x) => x.meta)];
   return { isMock: all.some((m) => m.isMock), providers: Array.from(new Set(all.flatMap((m) => m.providers))), asOf: core.meta.asOf, sources: [] };
 }

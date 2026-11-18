@@ -162,7 +162,7 @@ export function useResearchChat(opts: { threadId?: string | null; onThread?: (id
         if (!res.ok || !res.body) {
           let j: { error?: { code?: string; message?: string; details?: { upgradeTo?: string } } } = {};
           try { j = await res.json(); } catch { /* ignore */ }
-          if (res.status === 402 || j.error?.code === 'upgrade_required') {
+          if (j.error?.code === 'upgrade_required') {
             patch(asstId, (m) => ({ ...m, streaming: false, gate: { reason: j.error?.message ?? 'AI research needs an upgrade.', upgradeTo: j.error?.details?.upgradeTo } }));
           } else {
             patch(asstId, (m) => ({ ...m, streaming: false, error: j.error?.message ?? `Request failed (HTTP ${res.status}).` }));

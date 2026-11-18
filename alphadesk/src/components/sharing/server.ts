@@ -5,6 +5,7 @@ import { portfolioRepo, researchRepo, screenRepo, shareRepo, type Scope } from '
 import { summarizePortfolio } from '@/components/dashboard/portfolio-math';
 import { loadAggregate } from '@/components/company/server/data';
 import { sanitizeTicker } from '@/lib/sanitize';
+import { redactSnapshot } from './redact';
 import { snapshotPreview, type ShareItemType } from './snapshot';
 import type { FeedCard } from './SharedFeed';
 
@@ -60,8 +61,8 @@ export async function buildBaseSnapshot(scope: Scope, itemType: ShareItemType, i
       const a = await loadAggregate(ticker);
       if (!a.found) return null;
       const p = a.profile;
-      const annual = a.financials.annual?.rows ?? [];
-      const finSources = Object.values(a.financials.annualSources ?? {});
+      const annual = a.financials?.annual?.rows ?? [];
+      const finSources = Object.values(a.financials?.annualSources ?? {});
       const hs = a.headerSources;
       return {
         title: `${ticker}${p?.name ? ` · ${p.name}` : ''}`,
@@ -80,7 +81,7 @@ export async function buildBaseSnapshot(scope: Scope, itemType: ShareItemType, i
             periods: a.estimates.periods.slice(0, 6).map((e) => ({ Period: e.period, Metric: e.metric.toUpperCase(), Consensus: e.consensus, Analysts: e.numAnalysts, '30d revision %': e.change30dPct })),
           } : null,
           news: a.news.slice(0, 5).map((n) => ({ title: n.title, publisher: n.publisher, url: n.url, publishedAt: n.publishedAt })),
-          sources: [hs.price, hs.marketCap, hs.pe, hs.evEbitda, hs.range, hs.profile, ...finSources.slice(-3), ...(a.meta.sections.estimates.sources ?? []).slice(0, 2), ...(a.meta.sections.newsFilings.sources ?? []).slice(0, 4)].filter(Boolean),
+          sources: [hs.price, hs.marketCap, hs.pe, hs.evEbitda, hs.range, hs.profile, ...finSources.slice(-3), ...(a.meta.sections.estimates?.sources ?? []).slice(0, 2), ...(a.meta.sections.newsFilings.sources ?? []).slice(0, 4)].filter(Boolean),
         },
       };
     }
@@ -107,11 +108,11 @@ export async function buildBaseSnapshot(scope: Scope, itemType: ShareItemType, i
 }
 
 /** Org share feed as serialisable cards (previews only). */
-export async function listShareCards(scope: Scope, take = 100): Promise<FeedCard[]> {
+export async function listShareCards(scope: Scope, take = 100, viewer?: { plan: string } | null): Promise<FeedCard[]> {
   const rows = await shareRepo.list(scope, take);
   return rows.map((s) => ({
     id: s.id, token: s.token, itemType: s.itemType, title: s.title, visibility: s.visibility, createdAt: s.createdAt.toISOString(),
     createdById: s.createdById, createdByName: s.createdByName ?? 'Unknown', commentCount: (s as typeof s & { commentCount?: number }).commentCount ?? 0,
-    isMock: s.snapshot.isMock === true, preview: snapshotPreview(s.itemType, s.snapshot),
+    isMock: s.snapshot.isMock === true, preview: snapshotPreview(s.itemType, redactSnapshot(s.itemType, s.snapshot, viewer)),
   }));
 }

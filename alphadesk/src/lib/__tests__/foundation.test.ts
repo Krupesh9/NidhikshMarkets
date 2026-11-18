@@ -10,13 +10,11 @@ describe('plans', () => {
   it('gates AI on FREE with upgrade target', () => {
     const r = assertFeature({ plan: 'FREE' }, 'ai');
     expect(r.allowed).toBe(false);
-    expect(r.upgradeTo).toBe('PRO');
-  });
-  it('limits PRO to 100 AI queries/month', () => {
-    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 99).allowed).toBe(true);
-    const r = checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 100);
-    expect(r.allowed).toBe(false);
     expect(r.upgradeTo).toBe('PRO_PLUS');
+  });
+  it('Pro (and the legacy PRO tier) has unlimited AI queries', () => {
+    expect(checkLimit({ plan: 'PRO_PLUS' }, 'aiQueriesPerMonth', 100_000).allowed).toBe(true);
+    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 100_000).allowed).toBe(true);
   });
   it('FREE allows 5 positions', () => {
     expect(checkLimit({ plan: 'FREE' }, 'positions', 4).allowed).toBe(true);

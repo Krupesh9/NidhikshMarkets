@@ -5,6 +5,7 @@ import { getSessionUser } from '@/lib/auth';
 import { sanitizeTicker } from '@/lib/sanitize';
 import { log } from '@/lib/log';
 import { cacheDir } from '@/lib/cache-dir';
+import { hasMinuteBudget, meteredFetch } from '@/lib/usage-meter';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ type Img = { body: Buffer; type: string };
 const inflight = new Map<string, Promise<{ img: Img | null; transient: boolean }>>();
 
 async function fetchImage(url: string, headers: Record<string, string> = {}) {
-  const r = await fetch(url, { headers, redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  // Massive branding images count against the Massive key's quota; everything else is a public logo source
+  const r = await meteredFetch(/^https:\/\/api\.(massive|polygon)\./.test(url) ? 'massive' : 'logos', url, { headers, redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(8000) });
   const type = r.headers.get('content-type') ?? '';
   if (!r.ok || !type.startsWith('image/')) return null;
   const body = Buffer.from(await r.arrayBuffer());
@@ -40,9 +42,9 @@ async function resolve(t: string): Promise<{ img: Img | null; transient: boolean
   if (free) return free;
   const key = process.env.MASSIVE_API_KEY || process.env.POLYGON_API_KEY;
   let homepage: string | undefined;
-  if (key) {
+  if (key && hasMinuteBudget('massive')) {
     try {
-      const r = await fetch(`https://api.massive.com/v3/reference/tickers/${encodeURIComponent(t)}`, { headers: { Authorization: `Bearer ${key}` }, cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      const r = await meteredFetch('massive', `https://api.massive.com/v3/reference/tickers/${encodeURIComponent(t)}`, { headers: { Authorization: `Bearer ${key}` }, cache: 'no-store', signal: AbortSignal.timeout(8000) });
       if (r.status === 429 || r.status >= 500) transient = true;
       if (r.ok) {
         const j = (await r.json()) as { results?: { branding?: { icon_url?: string }; homepage_url?: string } };
@@ -57,6 +59,8 @@ async function resolve(t: string): Promise<{ img: Img | null; transient: boolean
       transient = true;
       log.debug('logo.massive_failed', { t, err: (e as Error).message });
     }
+  } else if (key) {
+    transient = true; // skipped for Massive's per-minute budget — try again later rather than caching a miss
   }
   if (homepage) {
     try {

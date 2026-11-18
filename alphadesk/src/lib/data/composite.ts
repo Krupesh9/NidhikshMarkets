@@ -2,11 +2,14 @@ import 'server-only';
 import type { HistoryRange, MarketDataProvider, PartialProvider, Quote, WithMeta } from './types';
 import { isIntradayRange } from './types';
 import { mockProvider } from './mock';
+import { mockAllowed } from './mock-policy';
+import { recordProviderSuccess } from './providers-status';
 import { alpacaEnabled, alpacaProvider, alpacaQuoteMeta } from './alpaca';
 import { alphaVantageEnabled, alphaVantageProvider } from './alphavantage';
 import { massiveEnabled, massiveProvider } from './massive';
 import { nidhikshProvider } from './nidhiksh';
 import { secProvider } from './sec';
+import { sec13fProvider } from './sec13f';
 import { cache } from '../cache';
 import { log } from '../log';
 
@@ -21,7 +24,7 @@ function hasData(v: unknown): boolean {
 
 function chain(): PartialProvider[] {
   if (process.env.ALPHADESK_FORCE_MOCK === '1') return [mockProvider];
-  const out: PartialProvider[] = [];
+  const out: PartialProvider[] = [sec13fProvider]; // implements only getInstitutional (bundled SEC 13F snapshot) — tried first
   // Alpaca first: it serves quotes + history (incl. intraday) on the free plan; Massive's free tier 403s/429s those.
   if (alpacaEnabled()) out.push(alpacaProvider);
   if (massiveEnabled()) out.push(massiveProvider);
@@ -29,7 +32,8 @@ function chain(): PartialProvider[] {
   // Always present: getFilings is a no-op when SEC is off, and getFinancials then falls back to the Nidhiksh SEC cache.
   out.push(secProvider);
   if (alphaVantageEnabled()) out.push(alphaVantageProvider);
-  out.push(mockProvider);
+  // Production (ALLOW_MOCK_DATA unset/0): never fall back to simulated data — sections show empty states instead.
+  if (mockAllowed()) out.push(mockProvider);
   return out;
 }
 
@@ -57,13 +61,16 @@ async function first<T>(method: Method, args: unknown[]): Promise<WithMeta<T>> {
         if (!fn) continue;
         try {
           const r = await fn.apply(p, args);
-          if (hasData(r.data)) return { data: r.data, meta: { ...r.meta, provider: r.meta.provider ?? p.name } };
+          if (hasData(r.data)) {
+            if (p !== mockProvider) recordProviderSuccess(r.meta.provider ?? p.name);
+            return { data: r.data, meta: { ...r.meta, provider: r.meta.provider ?? p.name } };
+          }
         } catch (e) {
           log.debug('marketdata.provider_failed', { provider: p.name, method, err: (e as Error).message });
         }
       }
-      // never throw to the UI: return an empty, mock-labelled result
-      return { data: (NULLABLE.has(method) ? null : []) as T, meta: { source: [], isMock: true, asOf: new Date().toISOString(), provider: 'none' } };
+      // never throw to the UI: return an empty result (mock-labelled only when the mock provider is in play)
+      return { data: (NULLABLE.has(method) ? null : []) as T, meta: { source: [], isMock: mockAllowed(), asOf: new Date().toISOString(), provider: 'none' } };
     },
     ttlFor(method, args),
   );

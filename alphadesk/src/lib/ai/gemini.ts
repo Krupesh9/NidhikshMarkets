@@ -1,5 +1,6 @@
 import 'server-only';
 import { GoogleGenerativeAI, type Content, type FunctionDeclaration, type Part } from '@google/generative-ai';
+import { isLimitError, recordCall } from '../usage-meter';
 import type { ChatOptions, LLMProvider } from './provider';
 import type { LLMMessage, ProviderEvent, ToolCall, ToolSpec } from './types';
 
@@ -63,7 +64,16 @@ export class GeminiProvider implements LLMProvider {
       tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: toGeminiSchema(t.inputSchema) }) as FunctionDeclaration) }],
       generationConfig: { maxOutputTokens: opts.maxTokens ?? 8192 },
     });
-    const res = await model.generateContentStream({ contents: toContents(messages) }, { signal: opts.signal });
+    const endpoint = `generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent`;
+    let res: Awaited<ReturnType<typeof model.generateContentStream>>;
+    try {
+      res = await model.generateContentStream({ contents: toContents(messages) }, { signal: opts.signal });
+      recordCall('gemini', { ok: true, status: 200, endpoint });
+    } catch (e) {
+      const status = Number((e as { status?: number }).status) || 0;
+      recordCall('gemini', { ok: false, status, endpoint, limitError: isLimitError('gemini', status, (e as Error).message) });
+      throw e;
+    }
     let text = '';
     const parts: Part[] = [];
     const calls: ToolCall[] = [];

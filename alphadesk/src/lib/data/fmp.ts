@@ -1,10 +1,8 @@
 import 'server-only';
 import type { AnalystAction, Estimates } from './types';
 import { cache } from '../cache';
-import fs from 'node:fs';
-import path from 'node:path';
 import { log } from '../log';
-import { cacheDir } from '../cache-dir';
+import { callsToday, isProviderBlocked, meteredFetch, providerLimits } from '../usage-meter';
 
 /**
  * Financial Modeling Prep (FMP) adapter — analyst ratings, price targets and firm-by-firm grade changes.
@@ -21,30 +19,17 @@ export function fmpEnabled(): boolean {
 }
 
 /**
- * Daily call budget. FMP's free plan allows ~250 calls/day; we stop at FMP_DAILY_LIMIT (default 240) and keep
- * serving the last good response, so the app never goes blank. Usage is persisted so restarts don't reset it.
+ * Daily call budget. FMP's free plan allows 250 calls/day; we stop at FMP_DAILY_LIMIT (default 240) and keep
+ * serving the last good response, so the app never goes blank. Calls are counted by the shared usage meter
+ * (`src/lib/usage-meter.ts`, persisted per US-Eastern day) — the single source of truth for FMP usage. When FMP
+ * itself answers 429 "Limit Reach" the meter marks it blocked and we stop calling until the block expires.
  */
-const DAILY_LIMIT = Number(process.env.FMP_DAILY_LIMIT || 240);
-const USAGE_FILE = cacheDir('fmp-usage.json');
-let usage: { day: string; calls: number } | null = null;
 const lastGood = new Map<string, unknown>();
-
+const fmpBudget = () => providerLimits().find((d) => d.id === 'fmp')!.budget!.max;
 const etDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-function loadUsage() {
-  if (usage && usage.day === etDay()) return usage;
-  try {
-    const u = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8')) as { day: string; calls: number };
-    usage = u.day === etDay() ? u : { day: etDay(), calls: 0 };
-  } catch { usage = { day: etDay(), calls: 0 }; }
-  return usage;
-}
-function countCall() {
-  const u = loadUsage();
-  u.calls += 1;
-  try { fs.mkdirSync(path.dirname(USAGE_FILE), { recursive: true }); fs.writeFileSync(USAGE_FILE, JSON.stringify(u)); } catch { /* best effort */ }
-}
-/** Calls used today (US Eastern day) and the configured limit. */
-export function fmpUsage() { const u = loadUsage(); return { day: u.day, calls: u.calls, limit: DAILY_LIMIT }; }
+
+/** Calls used today (US Eastern day) and the configured app-side limit. */
+export function fmpUsage() { return { day: etDay(), calls: callsToday('fmp'), limit: fmpBudget() }; }
 
 /** True during regular US market hours (Mon–Fri 9:30–16:00 ET). */
 export function usMarketOpen(now = new Date()): boolean {
@@ -57,14 +42,13 @@ async function get<T>(path: string, ttlMs = TTL): Promise<T | null> {
   const key = process.env.FMP_API_KEY;
   if (!key) return null;
   return cache.wrap(`fmp:${path}`, async () => {
-    if (loadUsage().calls >= DAILY_LIMIT) {
-      log.info('fmp.budget_exhausted', { path: path.split('?')[0], limit: DAILY_LIMIT });
+    if (callsToday('fmp') >= fmpBudget() || isProviderBlocked('fmp')) {
+      log.info('fmp.budget_exhausted', { path: path.split('?')[0], limit: fmpBudget(), blocked: isProviderBlocked('fmp') });
       return (lastGood.get(path) as T | undefined) ?? null;
     }
     try {
-      countCall();
       const sep = path.includes('?') ? '&' : '?';
-      const r = await fetch(`${BASE}/${path}${sep}apikey=${encodeURIComponent(key)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+      const r = await meteredFetch('fmp', `${BASE}/${path}${sep}apikey=${encodeURIComponent(key)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
       if (!r.ok) { log.debug('fmp.http', { path: path.split('?')[0], status: r.status }); return (lastGood.get(path) as T | undefined) ?? null; }
       const body = (await r.json()) as T;
       lastGood.set(path, body);

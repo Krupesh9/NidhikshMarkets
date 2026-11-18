@@ -4,6 +4,7 @@ import { assertFeature } from '@/lib/plans';
 import { screenRepo } from '@/lib/repos';
 import { fromSavedScreen, parseFilters, parseSort } from '@/lib/screener/engine';
 import { exportColumns, toCsv, toXlsx } from '@/lib/screener/export';
+import { sanitizeGroups, splitTickerInput } from '@/lib/screener/list';
 import { runScreenForPlan } from '@/lib/screener/service';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ function parseJsonParam(s: string | undefined): unknown {
 }
 
 /**
- * GET ?format=csv|xlsx&screen=<savedScreenId>  — or ad-hoc: &filters=<json>&sort=<json>&columns=a,b,c
+ * GET ?format=csv|xlsx&screen=<savedScreenId>  — or ad-hoc: &filters=<json>&sort=<json>&columns=a,b,c&tickers=A,B&groups=<json>
  * Pro and Pro Plus only (402 upgrade_required on Free).
  */
 export const GET = withApi(
@@ -23,14 +24,17 @@ export const GET = withApi(
     if (!gate.allowed) throw upgradeRequired(gate.reason ?? 'Export requires an upgrade', gate.upgradeTo);
 
     let title = 'Ad-hoc screen';
-    let def = { filters: parseFilters(parseJsonParam(query.filters)), sort: parseSort(parseJsonParam(query.sort)), columns: query.columns ? query.columns.split(',').filter(Boolean) : [] };
+    let def: { filters: ReturnType<typeof parseFilters>; sort: ReturnType<typeof parseSort>; columns: string[]; tickers: string[] | null; groups: Record<string, string> } = {
+      filters: parseFilters(parseJsonParam(query.filters)), sort: parseSort(parseJsonParam(query.sort)), columns: query.columns ? query.columns.split(',').filter(Boolean) : [],
+      tickers: query.tickers ? splitTickerInput(query.tickers) : null, groups: sanitizeGroups(parseJsonParam(query.groups)),
+    };
     if (query.screen) {
       const s = await screenRepo.get({ orgId: user.orgId, userId: user.id }, query.screen);
       if (!s) throw notFound('Saved screen not found');
       title = s.name;
       def = { ...fromSavedScreen(s), columns: query.columns ? def.columns : (s.columns ?? []) };
     }
-    const res = await runScreenForPlan(user.plan, def.filters, def.sort);
+    const res = await runScreenForPlan(user, { filters: def.filters, sort: def.sort, tickers: def.tickers, groups: def.groups });
     const cols = exportColumns(def.columns);
     const stamp = new Date().toISOString().slice(0, 10);
     const base = `${title.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'screen'}-${stamp}`;
@@ -55,6 +59,8 @@ export const GET = withApi(
       filters: z.string().max(4000).optional(),
       sort: z.string().max(500).optional(),
       columns: z.string().max(500).optional(),
+      tickers: z.string().max(1300).optional(),
+      groups: z.string().max(4000).optional(),
     }),
     audit: 'screen.export',
   },

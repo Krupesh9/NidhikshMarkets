@@ -13,3 +13,6 @@ coverage
 
 # generated at Vercel build time
 prisma/postgres.generated.prisma
+
+# local data exports (personal data — the repo is public)
+data-export/

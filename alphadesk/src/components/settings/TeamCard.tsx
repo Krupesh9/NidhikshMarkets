@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { UpgradeHint } from '@/components/shell/UpgradeHint';
-import { PLAN_INFO, type GateResult, type Plan, type Role } from '@/lib/plans';
+import { normalizePlan, PLAN_INFO, PLANS, type GateResult, type Plan, type Role } from '@/lib/plans';
 
 export interface TeamMember { id: string; name: string | null; email: string; role: string; plan: string; createdAt: string }
 export interface TeamData { org: { id: string; name: string } | null; members: TeamMember[]; seats: { used: number; limit: number | null }; canManage: boolean; gate: GateResult }
@@ -25,7 +25,7 @@ async function call(url: string, init?: RequestInit) {
   return j;
 }
 
-export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string; myRole: Role }) {
+export function TeamCard({ data, meId, myRole, isOwner = false }: { data: TeamData; meId: string; myRole: Role; isOwner?: boolean }) {
   const router = useRouter();
   const [email, setEmail] = React.useState('');
   const [name, setName] = React.useState('');
@@ -39,7 +39,7 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
     setBusy('invite');
     try {
       await call('/api/team', { method: 'POST', body: JSON.stringify({ email, name: name || undefined, role }) });
-      toast({ title: 'Invite sent (simulated)', description: `${email} was added to ${data.org?.name ?? 'your team'}. They can sign in with the dev magic link.`, variant: 'success' });
+      toast({ title: 'Invite sent (simulated)', description: `${email} was added to ${data.org?.name ?? 'your team'}. They can sign in with Google (or the dev magic link locally).`, variant: 'success' });
       setEmail(''); setName('');
       router.refresh();
     } catch (err) {
@@ -60,6 +60,18 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
       setBusy(null);
     }
   };
+  const changePlan = async (id: string, plan: Plan) => {
+    setBusy(id);
+    try {
+      await call(`/api/team/${id}`, { method: 'PATCH', body: JSON.stringify({ plan }) });
+      toast({ title: `Plan set to ${PLAN_INFO[plan].label}`, variant: 'success' });
+      router.refresh();
+    } catch (err) {
+      toast({ title: 'Plan not changed', description: (err as Error).message, variant: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
   const remove = async (m: TeamMember) => {
     if (!window.confirm(`Remove ${m.name ?? m.email} from the team? Their seat is freed.`)) return;
     setBusy(m.id);
@@ -75,11 +87,11 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
   };
 
   return (
-    <Card id="team" className="scroll-mt-16">
+    <Card id="team" className="scroll-mt-28">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4 text-muted" aria-hidden /> Team{data.org ? ` · ${data.org.name}` : ''}</CardTitle>
-          <CardDescription>Seats are set by the plan of the admin managing the team (Pro Plus: 5 seats).</CardDescription>
+          <CardDescription>Admins set roles and plans for every member. Pro includes 5 seats.</CardDescription>
         </div>
         <Badge variant={full ? 'warn' : 'outline'} className="font-mono">{data.seats.used} / {data.seats.limit ?? '∞'} seats</Badge>
       </CardHeader>
@@ -112,7 +124,16 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
                       <Badge variant={m.role === 'ADMIN' ? 'accent' : 'outline'}>{m.role.charAt(0) + m.role.slice(1).toLowerCase()}</Badge>
                     )}
                   </td>
-                  <td className="px-3 py-2">{PLAN_INFO[m.plan as Plan]?.label ?? m.plan}</td>
+                  <td className="px-3 py-2">
+                    {isAdmin && (m.id !== meId || isOwner) ? (
+                      <Select value={normalizePlan(m.plan)} onValueChange={(v) => changePlan(m.id, v as Plan)} disabled={busy === m.id}>
+                        <SelectTrigger className="h-8 w-36" aria-label={`Plan for ${m.name ?? m.email}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>{PLANS.map((p) => <SelectItem key={p} value={p}>{PLAN_INFO[p].priceLabel}</SelectItem>)}</SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant={normalizePlan(m.plan) === 'PRO_PLUS' ? 'accent' : 'outline'}>{PLAN_INFO[normalizePlan(m.plan)].label}</Badge>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-muted">{new Date(m.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                   {data.canManage && (
                     <td className="px-3 py-2 text-right">
@@ -126,7 +147,7 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
         </div>
 
         {!isAdmin ? (
-          <p className="text-xs text-muted">Only admins can invite members or change roles.</p>
+          <p className="text-xs text-muted">Only admins can invite members or change roles and plans.</p>
         ) : !data.gate.allowed ? (
           <UpgradeHint gate={data.gate} />
         ) : full ? (
@@ -149,7 +170,7 @@ export function TeamCard({ data, meId, myRole }: { data: TeamData; meId: string;
               </Select>
             </div>
             <Button type="submit" disabled={busy === 'invite' || !email}><UserPlus aria-hidden /> {busy === 'invite' ? 'Inviting…' : 'Invite'}</Button>
-            <p className="text-[11px] text-muted sm:col-span-4">Demo: creates the user record immediately (Free plan) and logs a simulated invite link to the server console.</p>
+            <p className="text-[11px] text-muted sm:col-span-4">Creates the member immediately on the Free plan. No email is sent: share the sign-in link with them yourself (they sign in with Google using this email).</p>
           </form>
         )}
       </CardContent>

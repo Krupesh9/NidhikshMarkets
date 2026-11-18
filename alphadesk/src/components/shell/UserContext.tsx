@@ -2,7 +2,7 @@
 import * as React from 'react';
 import type { Plan, Role } from '@/lib/plans';
 
-export interface ClientUser { id: string; orgId: string; email: string; name: string; role: Role; plan: Plan; image?: string | null }
+export interface ClientUser { id: string; orgId: string; email: string; name: string; role: Role; plan: Plan; image?: string | null; /** may open Settings (owner only) */ canSettings?: boolean }
 export interface ClientUsage { period: string; aiQueries: number; deepDivesToday: number }
 export interface DataMode { label: string; isMock: boolean; providers: string[] }
 

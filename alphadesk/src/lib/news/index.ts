@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from '@/lib/cache';
 import { log } from '@/lib/log';
+import { meteredFetch } from '@/lib/usage-meter';
 import { getMarketData } from '@/lib/data';
 import type { NewsItem } from '@/lib/data/types';
 import { parseFeed } from './rss';
@@ -39,7 +40,7 @@ async function fetchFeed(src: NewsSource, url: string, ticker?: string): Promise
   if (hit) return hit;
   let res: FeedResult;
   try {
-    const r = await fetch(url, {
+    const r = await meteredFetch('news', url, {
       headers: { 'user-agent': UA, accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5' },
       cache: 'no-store',
       signal: AbortSignal.timeout(FEED_TIMEOUT_MS),

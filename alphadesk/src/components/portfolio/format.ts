@@ -33,6 +33,7 @@ export async function api<T>(url: string, init?: RequestInit & { json?: unknown 
   if (!r.ok) {
     const e = new Error(j?.error?.message ?? `Request failed (${r.status})`) as Error & { status?: number; details?: unknown };
     e.status = r.status;
+    (e as Error & { code?: string }).code = j?.error?.code;
     e.details = j?.error?.details;
     throw e;
   }

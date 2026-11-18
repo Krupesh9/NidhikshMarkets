@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { BetaContentBlockParam, BetaMessage, BetaMessageParam, BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import type { ChatOptions, LLMProvider } from './provider';
 import type { LLMMessage, ProviderEvent, ToolCall, ToolSpec } from './types';
+import { meteredFetch } from '../usage-meter';
 
 function toClaudeMessages(messages: LLMMessage[]): BetaMessageParam[] {
   const out: BetaMessageParam[] = [];
@@ -44,7 +45,8 @@ export class ClaudeProvider implements LLMProvider {
   private client: Anthropic;
 
   constructor(apiKey: string, readonly model: string, readonly label: string) {
-    this.client = new Anthropic({ apiKey, maxRetries: 2 });
+    // every HTTP request (incl. SDK retries) is counted by the usage meter; behaviour is plain fetch
+    this.client = new Anthropic({ apiKey, maxRetries: 2, fetch: (input, init) => meteredFetch('anthropic', input, init) });
   }
 
   async *chat(messages: LLMMessage[], tools: ToolSpec[], opts: ChatOptions): AsyncIterable<ProviderEvent> {

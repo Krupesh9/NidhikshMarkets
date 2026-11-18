@@ -1,6 +1,6 @@
 /** Critical path: plan gating (plans.ts) and the monthly AI usage reset boundary (usage.ts). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PLAN_INFO, PLANS, asPlan, assertFeature, checkLimit, formatLimit, type Feature } from '@/lib/plans';
+import { PLAN_INFO, PLANS, asPlan, assertFeature, chartRangeAllowed, checkLimit, formatLimit, hasFeature, normalizePlan, type Feature } from '@/lib/plans';
 
 const store = vi.hoisted(() => new Map<string, { id: string; userId: string; orgId: string; period: string; aiQueries: number; deepDives: string }>());
 
@@ -30,21 +30,23 @@ vi.mock('@/lib/db', () => {
 
 import { canDeepDive, canUseAi, currentPeriod, getUsage, incrementAiQueries, incrementDeepDive } from '@/lib/usage';
 
-describe('plan catalogue', () => {
-  it('prices: Pro $50/$500, Pro Plus $100/$1,000, Free $0', () => {
-    expect([PLAN_INFO.FREE.priceMonthly, PLAN_INFO.FREE.priceYearly]).toEqual([0, 0]);
-    expect([PLAN_INFO.PRO.priceMonthly, PLAN_INFO.PRO.priceYearly]).toEqual([50, 500]);
-    expect([PLAN_INFO.PRO_PLUS.priceMonthly, PLAN_INFO.PRO_PLUS.priceYearly]).toEqual([100, 1000]);
+describe('plan catalogue (two plans: Free $0, Pro $100/mo)', () => {
+  it('only FREE and PRO_PLUS exist; the paid plan is labelled Pro at $100/month', () => {
+    expect(PLANS).toEqual(['FREE', 'PRO_PLUS']);
+    expect(PLAN_INFO.FREE.priceMonthly).toBe(0);
+    expect(PLAN_INFO.PRO_PLUS.priceMonthly).toBe(100);
+    expect(PLAN_INFO.PRO_PLUS.label).toBe('Pro');
+    expect(PLAN_INFO.PRO_PLUS.priceLabel).toBe('Pro · $100/mo');
   });
-  it('limits match the contract', () => {
+  it('limits', () => {
     expect(PLAN_INFO.FREE.limits).toMatchObject({ aiQueriesPerMonth: 0, deepDivesPerDay: 3, positions: 5 });
-    expect(PLAN_INFO.PRO.limits).toMatchObject({ aiQueriesPerMonth: 100, positions: 50, workspaces: 1 });
     expect(PLAN_INFO.PRO_PLUS.limits).toMatchObject({ aiQueriesPerMonth: Infinity, positions: Infinity, seats: 5 });
   });
-  it('asPlan defaults anything unknown to FREE', () => {
-    expect(asPlan('PRO')).toBe('PRO');
-    expect(asPlan('PRO_PLUS')).toBe('PRO_PLUS');
-    for (const v of ['pro', 'ENTERPRISE', '', null, undefined]) expect(asPlan(v)).toBe('FREE');
+  it('normalizePlan maps the retired PRO tier to PRO_PLUS and anything unknown to FREE', () => {
+    expect(normalizePlan('PRO')).toBe('PRO_PLUS');
+    expect(asPlan('PRO')).toBe('PRO_PLUS');
+    expect(normalizePlan('PRO_PLUS')).toBe('PRO_PLUS');
+    for (const v of ['pro', 'ENTERPRISE', '', null, undefined]) expect(normalizePlan(v)).toBe('FREE');
   });
   it('formatLimit renders Infinity as Unlimited', () => {
     expect(formatLimit(Infinity)).toBe('Unlimited');
@@ -52,51 +54,43 @@ describe('plan catalogue', () => {
   });
 });
 
-describe('assertFeature', () => {
-  const expected: Record<Feature, [boolean, boolean, boolean, string | undefined]> = {
-    //                    FREE   PRO    PRO_PLUS  upgradeTo (from FREE)
-    ai: [false, true, true, 'PRO'],
-    sharing: [false, true, true, 'PRO'],
-    export: [false, true, true, 'PRO'],
-    customBasketSharing: [false, false, true, 'PRO_PLUS'],
-    priorityRefresh: [false, false, true, 'PRO_PLUS'],
-    team: [false, false, true, 'PRO_PLUS'],
-    savedScreens: [true, true, true, undefined],
-  };
-  it.each(Object.entries(expected))('%s gating across tiers', (feature, [free, pro, plus, up]) => {
-    const f = feature as Feature;
-    expect(PLANS.map((p) => assertFeature({ plan: p }, f).allowed)).toEqual([free, pro, plus]);
+describe('feature matrix', () => {
+  const PREMIUM: Feature[] = ['ai', 'advancedCharts', 'analystResearch', 'financials', 'ownership', 'marketHoldings', 'sharing', 'export', 'customBasketSharing', 'priorityRefresh', 'team'];
+  it.each(PREMIUM)('%s: Free locked → upgrade to PRO_PLUS; Pro (and legacy PRO) unlocked', (f) => {
     const r = assertFeature({ plan: 'FREE' }, f);
-    if (!free) {
-      expect(r.upgradeTo).toBe(up);
-      expect(r.reason).toMatch(/available on/);
-    }
+    expect(r).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
+    expect(r.reason).toMatch(/Pro · \$100\/mo/);
+    expect(assertFeature({ plan: 'PRO_PLUS' }, f).allowed).toBe(true);
+    expect(assertFeature({ plan: 'PRO' }, f).allowed).toBe(true);
+    expect(hasFeature(null, f)).toBe(false);
   });
-  it('PRO is pointed at PRO_PLUS for custom basket sharing', () => {
-    expect(assertFeature({ plan: 'PRO' }, 'customBasketSharing')).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
+  it('saved screens are available to everyone', () => {
+    for (const p of PLANS) expect(assertFeature({ plan: p }, 'savedScreens').allowed).toBe(true);
+  });
+  it('chart ranges: Free gets 1M–1Y only; Pro gets 1D/1W/5Y/MAX', () => {
+    for (const r of ['1M', '3M', '6M', 'YTD', '1Y']) expect(chartRangeAllowed({ plan: 'FREE' }, r)).toBe(true);
+    for (const r of ['1D', '1W', '5Y', 'MAX']) {
+      expect(chartRangeAllowed({ plan: 'FREE' }, r)).toBe(false);
+      expect(chartRangeAllowed({ plan: 'PRO_PLUS' }, r)).toBe(true);
+    }
   });
 });
 
 describe('checkLimit', () => {
-  it('FREE has no AI at all and points to PRO', () => {
+  it('FREE has no AI at all and points to PRO_PLUS', () => {
     const r = checkLimit({ plan: 'FREE' }, 'aiQueriesPerMonth', 0);
-    expect(r).toMatchObject({ allowed: false, upgradeTo: 'PRO', limit: 0, remaining: 0 });
+    expect(r).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS', limit: 0, remaining: 0 });
     expect(r.reason).toMatch(/not included/);
   });
   it('FREE: 3 deep dives/day, 5 positions', () => {
     expect(checkLimit({ plan: 'FREE' }, 'deepDivesPerDay', 2).allowed).toBe(true);
-    expect(checkLimit({ plan: 'FREE' }, 'deepDivesPerDay', 3)).toMatchObject({ allowed: false, upgradeTo: 'PRO' });
+    expect(checkLimit({ plan: 'FREE' }, 'deepDivesPerDay', 3)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
     expect(checkLimit({ plan: 'FREE' }, 'positions', 4)).toMatchObject({ allowed: true, remaining: 1 });
-    expect(checkLimit({ plan: 'FREE' }, 'positions', 5)).toMatchObject({ allowed: false, upgradeTo: 'PRO', used: 5, limit: 5 });
-  });
-  it('PRO: 100 AI/month, 50 positions, then PRO_PLUS', () => {
-    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 99)).toMatchObject({ allowed: true, remaining: 1 });
-    expect(checkLimit({ plan: 'PRO' }, 'aiQueriesPerMonth', 100)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
-    expect(checkLimit({ plan: 'PRO' }, 'positions', 50)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
+    expect(checkLimit({ plan: 'FREE' }, 'positions', 5)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS', used: 5, limit: 5 });
   });
   it('bulk adds are checked as a whole (FREE adding 3 positions to 3)', () => {
     expect(checkLimit({ plan: 'FREE' }, 'positions', 3, 2).allowed).toBe(true);
-    expect(checkLimit({ plan: 'FREE' }, 'positions', 3, 3)).toMatchObject({ allowed: false, upgradeTo: 'PRO' });
+    expect(checkLimit({ plan: 'FREE' }, 'positions', 3, 3)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
   });
   it('PRO_PLUS: unlimited AI/positions; 5 seats with no further upgrade', () => {
     expect(checkLimit({ plan: 'PRO_PLUS' }, 'aiQueriesPerMonth', 1_000_000)).toMatchObject({ allowed: true, remaining: Infinity });
@@ -108,7 +102,7 @@ describe('checkLimit', () => {
 });
 
 describe('usage: monthly AI reset boundary', () => {
-  const PRO = { id: 'u_an', orgId: 'org_1', plan: 'PRO' as const };
+  const PRO = { id: 'u_an', orgId: 'org_1', plan: 'PRO_PLUS' as const };
   beforeEach(() => {
     store.clear();
     vi.useFakeTimers();
@@ -127,12 +121,11 @@ describe('usage: monthly AI reset boundary', () => {
     await incrementAiQueries(PRO, 99);
     expect(await incrementAiQueries(PRO)).toBe(100);
     expect((await getUsage(PRO)).aiQueries).toBe(100);
-    expect(await canUseAi(PRO)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
+    expect(await canUseAi(PRO)).toMatchObject({ allowed: true }); // Pro is unlimited; still metered
 
     vi.setSystemTime(new Date('2026-02-01T00:00:00.000Z'));
     const feb = await getUsage(PRO);
     expect(feb).toMatchObject({ period: '2026-02', aiQueries: 0 });
-    expect(await canUseAi(PRO)).toMatchObject({ allowed: true, remaining: 100 });
     expect(await incrementAiQueries(PRO)).toBe(1);
 
     // January's row is retained (history), not mutated by February usage.
@@ -149,7 +142,7 @@ describe('usage: monthly AI reset boundary', () => {
     const FREE = { id: 'u_in', orgId: 'org_1', plan: 'FREE' as const };
     vi.setSystemTime(new Date('2026-03-10T23:00:00Z'));
     for (let i = 0; i < 3; i++) await incrementDeepDive(FREE);
-    expect(await canDeepDive(FREE)).toMatchObject({ allowed: false, upgradeTo: 'PRO' });
+    expect(await canDeepDive(FREE)).toMatchObject({ allowed: false, upgradeTo: 'PRO_PLUS' });
     vi.setSystemTime(new Date('2026-03-11T00:00:01Z'));
     expect(await canDeepDive(FREE)).toMatchObject({ allowed: true, remaining: 3 });
   });

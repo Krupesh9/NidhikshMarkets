@@ -20,7 +20,7 @@ type SortKey = 'ticker' | 'marketValue' | 'weight' | 'dayPct' | 'unrealizedPnl' 
 export function PositionsTable({ portfolioId, positions, onChanged }: { portfolioId: string; positions: AnalyzedPosition[]; onChanged: () => void }) {
   const { user } = useCurrentUser();
   const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({ key: 'marketValue', desc: true });
-  const [gateMsg, setGateMsg] = React.useState<{ reason: string; upgradeTo?: 'PRO' | 'PRO_PLUS' } | null>(null);
+  const [gateMsg, setGateMsg] = React.useState<{ reason: string; upgradeTo?: 'PRO_PLUS' } | null>(null);
   const sorted = React.useMemo(() => {
     const s = [...positions].sort((a, b) => {
       if (sort.key === 'ticker') return a.ticker.localeCompare(b.ticker);
@@ -124,7 +124,7 @@ function EditableNumber({ value, dp, label, onSave, min }: { value: number; dp: 
   );
 }
 
-function AddPositionRow({ portfolioId, disabled, onAdded, onGate }: { portfolioId: string; disabled: boolean; onAdded: () => void; onGate: (g: { reason: string; upgradeTo?: 'PRO' | 'PRO_PLUS' } | null) => void }) {
+function AddPositionRow({ portfolioId, disabled, onAdded, onGate }: { portfolioId: string; disabled: boolean; onAdded: () => void; onGate: (g: { reason: string; upgradeTo?: 'PRO_PLUS' } | null) => void }) {
   const [t, setT] = React.useState('');
   const [q, setQ] = React.useState('');
   const [c, setC] = React.useState('');
@@ -140,8 +140,8 @@ function AddPositionRow({ portfolioId, disabled, onAdded, onGate }: { portfolioI
       setT(''); setQ(''); setC(''); onGate(null);
       onAdded();
     } catch (err) {
-      const e2 = err as Error & { status?: number; details?: { upgradeTo?: 'PRO' | 'PRO_PLUS' } };
-      if (e2.status === 402) onGate({ reason: e2.message, upgradeTo: e2.details?.upgradeTo });
+      const e2 = err as Error & { status?: number; details?: { upgradeTo?: 'PRO_PLUS' } };
+      if ((e2 as { code?: string }).code === 'upgrade_required' || e2.status === 402) onGate({ reason: e2.message, upgradeTo: e2.details?.upgradeTo });
       else toast({ title: 'Could not add position', description: e2.message, variant: 'error' });
     } finally { setBusy(false); }
   }

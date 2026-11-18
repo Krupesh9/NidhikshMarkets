@@ -2,7 +2,8 @@ import 'server-only';
 import Papa from 'papaparse';
 import ExcelJS from 'exceljs';
 import { csvSafe } from '@/lib/sanitize';
-import type { DataMeta, ScreenRow } from '@/lib/data/types';
+import type { DataMeta } from '@/lib/data/types';
+import type { LiveScreenRow } from './types';
 import { COLUMN_BY_ID, DEFAULT_COLUMNS, type ColumnDef } from './columns';
 import { describeFilter, type FilterKey, type FilterState } from './engine';
 
@@ -13,15 +14,16 @@ export function exportColumns(ids: string[] | undefined): ColumnDef[] {
   return list.map((id) => COLUMN_BY_ID[id]);
 }
 
-export function toCsv(rows: ScreenRow[], cols: ColumnDef[]): string {
+export function toCsv(rows: LiveScreenRow[], cols: ColumnDef[]): string {
   const data = rows.map((r) => cols.map((c) => {
     const v = c.get(r);
-    return typeof v === 'number' ? v : csvSafe(v ?? '');
+    // unavailable values export as empty cells (never 0)
+    return typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'number' ? '' : csvSafe(v ?? '');
   }));
   return Papa.unparse({ fields: cols.map((c) => c.label), data });
 }
 
-export async function toXlsx(rows: ScreenRow[], cols: ColumnDef[], ctx: { title: string; filters: FilterState; meta: DataMeta }): Promise<Buffer> {
+export async function toXlsx(rows: LiveScreenRow[], cols: ColumnDef[], ctx: { title: string; filters: FilterState; meta: DataMeta }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Nidhiksh Pulse';
   wb.created = new Date();
@@ -36,7 +38,7 @@ export async function toXlsx(rows: ScreenRow[], cols: ColumnDef[], ctx: { title:
     const rec: Record<string, unknown> = {};
     cols.forEach((c) => {
       const v = c.get(r);
-      rec[c.id] = c.format === 'date' && typeof v === 'string' ? new Date(`${v}T00:00:00Z`) : typeof v === 'string' ? csvSafe(v) : v;
+      rec[c.id] = c.format === 'date' && typeof v === 'string' ? new Date(`${v}T00:00:00Z`) : typeof v === 'string' ? csvSafe(v) : typeof v === 'number' && Number.isFinite(v) ? v : null;
     });
     ws.addRow(rec);
   });
@@ -65,6 +67,8 @@ export async function toXlsx(rows: ScreenRow[], cols: ColumnDef[], ctx: { title:
     ['Data as of', ctx.meta.asOf],
     ['Provider', `${ctx.meta.provider ?? 'unknown'}${ctx.meta.isMock ? ' (includes simulated demo data)' : ''}`],
     ['Filters', Object.keys(ctx.filters).map((k) => describeFilter(k as FilterKey, ctx.filters)).join('; ') || 'None'],
+    ['Sources', ctx.meta.isMock ? 'Demo data' : 'Alpaca (prices), SEC EDGAR (financials, Form 4), Financial Modeling Prep (profiles), Alpha Vantage (earnings calendar)'],
+    ['Blank cells', 'Not available from a free source (e.g. short interest, ESG; P/E for funds)'],
     ['Disclaimer', 'Research only — not investment advice.'],
   ]);
   info.getColumn(1).font = { bold: true };

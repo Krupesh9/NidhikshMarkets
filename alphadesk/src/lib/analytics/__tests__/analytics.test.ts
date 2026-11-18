@@ -243,16 +243,13 @@ describe('basket drift & rebalance', () => {
 });
 
 describe('position limits by plan', () => {
-  it('FREE allows 5, PRO 50, PRO_PLUS unlimited', () => {
+  it('FREE allows 5, Pro unlimited', () => {
     expect(positionsGate({ plan: 'FREE' }, 4, 1).allowed).toBe(true);
     const f = positionsGate({ plan: 'FREE' }, 5, 1);
     expect(f.allowed).toBe(false);
-    expect(f.upgradeTo).toBe('PRO');
+    expect(f.upgradeTo).toBe('PRO_PLUS');
     expect(f.maxAddable).toBe(0);
-    expect(positionsGate({ plan: 'PRO' }, 10, 40).allowed).toBe(true);
-    const p = positionsGate({ plan: 'PRO' }, 10, 41);
-    expect(p.allowed).toBe(false);
-    expect(p.upgradeTo).toBe('PRO_PLUS');
+    expect(positionsGate({ plan: 'PRO' }, 10, 41).allowed).toBe(true);
     expect(positionsGate({ plan: 'PRO_PLUS' }, 10_000, 5000).allowed).toBe(true);
   });
   it('counts only new tickers when appending', () => {

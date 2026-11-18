@@ -19,7 +19,7 @@ export const GET = withApi(async ({ user }) => teamPayload(user));
 export const POST = withApi(
   async ({ user, body, correlationId }) => {
     const gate = assertFeature(user, 'team');
-    if (!gate.allowed) throw upgradeRequired(gate.reason ?? 'Team seats require Pro Plus', gate.upgradeTo);
+    if (!gate.allowed) throw upgradeRequired(gate.reason ?? 'Team seats require Pro', gate.upgradeTo);
     const used = await db.user.count({ where: { orgId: user.orgId } });
     const seat = checkLimit(user, 'seats', used);
     if (!seat.allowed) throw upgradeRequired(`All ${seat.limit} seats are in use. Remove a member to invite someone new.`, seat.upgradeTo);

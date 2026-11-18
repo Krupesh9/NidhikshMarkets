@@ -14,7 +14,7 @@ export default async function Page() {
   const user = await requireSessionUser();
   const scope = { orgId: user.orgId, userId: user.id };
   const [items, members] = await Promise.all([
-    listShareCards(scope, 200),
+    listShareCards(scope, 200, user),
     db.user.findMany({ where: { orgId: user.orgId }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } }),
   ]);
   const gate = assertFeature(user, 'sharing');

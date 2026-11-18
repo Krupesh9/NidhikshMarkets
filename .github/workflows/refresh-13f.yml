@@ -1,0 +1,48 @@
+# Refresh the SEC Form 13F top-holder snapshot (alphadesk/data/13f/*.json) from the SEC's bulk Form 13F data sets.
+#
+# REQUIRED SECRET: SEC_USER_AGENT — add it under GitHub repo Settings -> Secrets and variables -> Actions ->
+# New repository secret, e.g. "Nidhiksh Pulse you@example.com". SEC fair access requires a descriptive User-Agent with contact.
+#
+# The SEC posts a new data set roughly quarterly (filing windows Mar–May, Jun–Aug, Sep–Nov, Dec–Feb, published a few weeks
+# after each window closes), so we check weekly. The script keeps generatedAt when holdings are unchanged, so a commit only
+# happens when a new quarter (or a revised data set) lands. Scheduled runs use the default branch (main).
+name: Refresh 13F holders
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: refresh-13f
+  cancel-in-progress: false
+defaults:
+  run:
+    working-directory: alphadesk
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: alphadesk/package-lock.json
+      # exceljs (a regular dependency) reads the SPY holdings workbook; the script itself uses Node built-ins + `unzip`.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build 13F snapshot
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          if [ -z "$SEC_USER_AGENT" ]; then echo "::error::Add the SEC_USER_AGENT repository secret (Settings -> Secrets and variables -> Actions)"; exit 1; fi
+          node scripts/build-13f.mjs
+      - name: Commit if changed
+        run: |
+          if [ -z "$(git status --porcelain -- data/13f)" ]; then echo "13F snapshot unchanged"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/13f
+          git commit -m "data(13f): refresh SEC Form 13F top holders"
+          git push

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { cache } from '@/lib/cache';
 import { cacheDir } from '@/lib/cache-dir';
 import { log } from '@/lib/log';
+import { isLimitError, meteredFetch, recordLimitError } from '@/lib/usage-meter';
 import { getMarketData } from '@/lib/data';
 import type { CalendarCategory, CalendarEvent, CalendarResult, CalendarSourceStatus } from './types';
 import { addDays, todayET, weekday } from './dates';
@@ -39,7 +40,7 @@ async function fredDates(releaseId: number, start: string): Promise<{ ok: boolea
   return cache.wrap(`cal:fred:${releaseId}:${start}`, async () => {
     try {
       const url = `https://api.stlouisfed.org/fred/release/dates?release_id=${releaseId}&api_key=${key}&file_type=json&include_release_dates_with_no_data=true&realtime_start=${start}&sort_order=asc&limit=200`;
-      const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const r = await meteredFetch('fred', url, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return { ok: true, dates: parseFredReleaseDates(await r.json()) };
     } catch (e) {
@@ -71,11 +72,14 @@ async function avEarnings(): Promise<{ ok: boolean; rows: EarningsRow[]; note?: 
     const key = process.env.ALPHA_VANTAGE_API_KEY;
     if (key) {
       try {
-        const r = await fetch(`https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey=${key}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+        const r = await meteredFetch('alphavantage', `https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey=${key}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const csv = await r.text();
         const rows = parseEarningsCsv(csv);
-        if (!rows.length) throw new Error('not CSV (rate limited or invalid key)');
+        if (!rows.length) {
+          if (isLimitError('alphavantage', 200, csv)) recordLimitError('alphavantage', { status: 200, endpoint: 'www.alphavantage.co/query (EARNINGS_CALENDAR)', message: 'rate limit notice' });
+          throw new Error('not CSV (rate limited or invalid key)');
+        }
         const entry: DiskEntry = { fetchedAt: new Date().toISOString(), csv };
         await fs.mkdir(path.dirname(AV_DISK), { recursive: true }).catch(() => undefined);
         await fs.writeFile(AV_DISK, JSON.stringify(entry)).catch(() => undefined);
