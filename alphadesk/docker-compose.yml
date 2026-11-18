@@ -1,0 +1,15 @@
+# Phase two only (not required for local demo). Postgres 16 + pgvector + Redis (BullMQ).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: nidhikshdesk
+      POSTGRES_PASSWORD: nidhikshdesk
+      POSTGRES_DB: nidhikshdesk
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    ports: ["6380:6379"]
+volumes:
+  pgdata: {}

@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens (hex in comments; stored as RGB triplets for Tailwind alpha support) */
+:root,
+[data-theme='dark'] {
+  --bg: 11 13 16; /* #0b0d10 */
+  --panel: 18 21 26; /* #12151a */
+  --panel-2: 23 27 33; /* #171b21 */
+  --border: 36 42 51; /* #242a33 */
+  --text: 231 234 238; /* #e7eaee */
+  --muted: 138 147 163; /* #8a93a3 */
+  --accent: 255 138 31; /* #ff8a1f */
+  --accent-fg: 17 17 17;
+  --info: 59 130 246; /* #3b82f6 */
+  --up: 34 197 94; /* #22c55e */
+  --down: 239 68 68; /* #ef4444 */
+  --warn: 245 158 11; /* #f59e0b */
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --bg: 246 247 249;
+  --panel: 255 255 255;
+  --panel-2: 240 242 245;
+  --border: 220 224 230;
+  --text: 17 20 24;
+  --muted: 87 96 110;
+  --accent: 214 105 0;
+  --accent-fg: 255 255 255;
+  --info: 29 99 216;
+  --up: 21 128 61;
+  --down: 200 30 30;
+  --warn: 180 110 0;
+  color-scheme: light;
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body { @apply bg-bg text-text; }
+  body { font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
+  :focus-visible { outline: 2px solid rgb(var(--info)); outline-offset: 2px; }
+  ::selection { background: rgb(var(--info) / 0.35); }
+}
+
+@layer utilities {
+  .num { @apply font-mono tabular-nums; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(var(--border)) transparent; }
+}
