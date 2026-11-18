@@ -67,7 +67,10 @@ function RatingsCard({ e, ticker }: { e: Estimates; ticker: string }) {
                     <div className="flex items-center gap-3">
                       <span className="h-3 w-3 rounded-sm" style={{ background: RATING[k].color }} aria-hidden />
                       <dt className="flex-1 font-medium">{RATING[k].label}</dt>
-                      <dd className="font-mono tabular-nums">{e.rating[k]} <span className="text-muted">· {share.toFixed(0)}%</span></dd>
+                      <dd className="flex items-center gap-2 font-mono tabular-nums">
+                        <span className="font-semibold">{e.rating[k]}</span>
+                        <span className="min-w-[3rem] rounded-md px-1.5 py-0.5 text-center text-xs font-semibold text-white" style={{ background: RATING[k].color }}>{share.toFixed(0)}%</span>
+                      </dd>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/60" aria-hidden>
                       <div className="h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${share}%`, background: RATING[k].color }} />

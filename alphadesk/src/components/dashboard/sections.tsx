@@ -101,7 +101,7 @@ export async function MarketPulse() {
                 <span className="font-mono text-xl font-semibold tabular-nums">{c.value ?? '—'}</span>
                 {c.changePct == null ? <span className="text-[11px] text-muted">no quote</span>
                   : c.changeText?.endsWith('bp') ? <span className={cn('font-mono text-xs tabular-nums', c.changePct > 0 ? 'text-up' : c.changePct < 0 ? 'text-down' : 'text-muted')}>{c.changeText}</span>
-                  : <Delta value={c.changePct} className="text-xs" />}
+                  : <Delta value={c.changePct} badge className="min-w-0 text-xs" />}
               </div>
               <div className="mt-1 truncate font-mono text-[11px] tabular-nums text-muted" title={c.note}>{c.changeText && !c.changeText.endsWith('bp') ? `${c.changeText} · ` : ''}{c.note}</div>
             </>
@@ -144,7 +144,7 @@ export async function WatchlistMovers({ symbols }: { symbols: string[] }) {
                 <span className="w-12 font-mono font-semibold text-info">{x.ticker}</span>
                 <Sparkline closes={(hist[i]?.data ?? []).map((b) => b.close)} up={x.changePct >= 0} label={`${x.ticker} one-month price trend`} />
                 <span className="ml-auto font-mono tabular-nums">{fmt.price(x.price)}</span>
-                <Delta value={x.changePct} className="w-[4.5rem] justify-end text-xs" />
+                <Delta value={x.changePct} badge className="text-xs" />
               </Link>
             </li>
           ))}

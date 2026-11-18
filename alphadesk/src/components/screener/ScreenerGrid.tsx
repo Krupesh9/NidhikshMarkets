@@ -41,7 +41,7 @@ function buildColumns(expanded: Set<string>, toggle: (t: string) => void): TColu
     country: ({ row }) => <span className="text-muted">{row.original.country}</span>,
     marketCap: ({ row }) => formatBigMoney(row.original.marketCap),
     price: ({ row }) => `$${row.original.price.toFixed(2)}`,
-    changePct: ({ row }) => <Delta value={row.original.changePct} showArrow={false} />,
+    changePct: ({ row }) => <Delta value={row.original.changePct} badge className="text-xs" />,
     sparkline: ({ row }) => <Sparkline data={row.original.sparkline} width={64} height={18} label={`${row.original.ticker} 30-day trend`} />,
     pe: ({ row }) => (row.original.pe > 0 ? num(row.original.pe, 1, 'x') : <span className="text-muted">n/m</span>),
     evEbitda: ({ row }) => (row.original.evEbitda > 0 ? num(row.original.evEbitda, 1, 'x') : <span className="text-muted">n/m</span>),

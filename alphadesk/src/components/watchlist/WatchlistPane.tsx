@@ -89,7 +89,7 @@ export function WatchlistPane({ symbols: initial }: { symbols: string[] }) {
                   ) : q ? (
                     <span className="ml-auto flex items-center gap-2">
                       <span className="font-mono tabular-nums">{fmt.price(q.price)}</span>
-                      <Delta value={q.changePct} showArrow={false} className="w-14 justify-end text-xs" />
+                      <Delta value={q.changePct} badge className="min-w-[4.25rem] text-xs" />
                     </span>
                   ) : (
                     <span className="ml-auto text-xs text-muted">—</span>

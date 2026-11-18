@@ -433,7 +433,7 @@ export function PriceChart({ ticker, initialBars }: { ticker: string; initialBar
         </div>
         {periodChange != null && showChart && (
           <span className="text-xs text-muted">
-            {range} change <Delta value={periodChange} className="text-xs" />
+            {range} change <Delta value={periodChange} badge className="ml-1 min-w-0 text-xs" />
           </span>
         )}
       </div>

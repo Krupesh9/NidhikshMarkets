@@ -51,7 +51,7 @@ export function CompanyHeader({ core, canShare }: { core: CoreData; canShare: bo
           {quote && (
             <div className="mt-0.5 flex items-center gap-2 text-sm">
               <Delta value={quote.change} suffix="" dp={2} />
-              <Delta value={quote.changePct} showArrow={false} />
+              <Delta value={quote.changePct} badge />
               <span className="text-xs text-muted">as of {fmt.date(quote.ts)}</span>
             </div>
           )}
