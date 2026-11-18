@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/shell/PlaceholderPage';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { ResearchWorkspace } from '@/components/ai/ResearchWorkspace';
 
 export const metadata: Metadata = { title: 'Research' };
 
 export default function Page() {
-  return <PlaceholderPage title="Research" description="Ask questions across filings, transcripts and news — every answer cited." owner="B" />;
+  return (
+    <>
+      <PageHeader title="Research" description="Ask questions across filings, transcripts, estimates and news — every number cited. Research only — not investment advice." />
+      <ResearchWorkspace />
+    </>
+  );
 }
