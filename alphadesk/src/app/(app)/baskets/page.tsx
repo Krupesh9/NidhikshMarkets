@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/shell/PlaceholderPage';
+import { BasketList } from '@/components/portfolio/BasketList';
 
 export const metadata: Metadata = { title: 'Baskets' };
+export const dynamic = 'force-dynamic';
 
 export default function Page() {
-  return <PlaceholderPage title="Baskets" description="Thematic baskets with target weights." owner="D" />;
+  return <BasketList />;
 }

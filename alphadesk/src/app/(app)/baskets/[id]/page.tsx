@@ -1,8 +1,20 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/shell/PlaceholderPage';
+import { notFound } from 'next/navigation';
+import { requireSessionUser } from '@/lib/auth';
+import { portfolioRepo } from '@/lib/repos';
+import { BasketDetail } from '@/components/portfolio/BasketDetail';
 
-export const metadata: Metadata = { title: 'Basket' };
+export const dynamic = 'force-dynamic';
 
-export default function Page() {
-  return <PlaceholderPage title="Basket" description="Holdings, weights and thesis." owner="D" />;
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const u = await requireSessionUser();
+  const b = await portfolioRepo.getBasket({ orgId: u.orgId, userId: u.id }, params.id);
+  return { title: b?.name ?? 'Basket' };
+}
+
+export default async function Page({ params }: { params: { id: string } }) {
+  const u = await requireSessionUser();
+  const b = await portfolioRepo.getBasket({ orgId: u.orgId, userId: u.id }, params.id);
+  if (!b) notFound();
+  return <BasketDetail initial={JSON.parse(JSON.stringify(b))} />;
 }

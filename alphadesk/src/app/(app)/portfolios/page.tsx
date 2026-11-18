@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/shell/PlaceholderPage';
+import { PortfolioList } from '@/components/portfolio/PortfolioList';
 
 export const metadata: Metadata = { title: 'Portfolios' };
+export const dynamic = 'force-dynamic';
 
 export default function Page() {
-  return <PlaceholderPage title="Portfolios" description="Exposure, risk and attribution across your books." owner="D" />;
+  return <PortfolioList />;
 }
