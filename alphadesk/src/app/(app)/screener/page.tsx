@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
-import { PlaceholderPage } from '@/components/shell/PlaceholderPage';
+import { Suspense } from 'react';
+import { PageSkeleton } from '@/components/ui/skeleton';
+import { ScreenerClient } from '@/components/screener/ScreenerClient';
 
 export const metadata: Metadata = { title: 'Screener' };
 
 export default function Page() {
-  return <PlaceholderPage title="Screener" description="Filter the universe on fundamentals, revisions, ownership and catalysts." owner="C" />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ScreenerClient />
+    </Suspense>
+  );
 }
